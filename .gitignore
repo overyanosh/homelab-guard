@@ -6,7 +6,7 @@ deploy/data/
 frontend/node_modules/
 frontend/dist/
 backend/web/dist/*
-!backend/web/dist/.gitkeep
+!backend/web/dist/*.html
 ai-worker/.venv/
 __pycache__/
 *.pyc

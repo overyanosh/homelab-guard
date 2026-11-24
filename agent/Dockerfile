@@ -4,6 +4,7 @@ ARG TARGETARCH
 WORKDIR /build
 
 COPY backend/go.mod ./
+COPY backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY agent/ ./agent/

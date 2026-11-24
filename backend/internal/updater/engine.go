@@ -11,12 +11,13 @@ import (
 	"strings"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
-	"homelab-guard/internal/labels"
+	"github.com/overyanosh/homelab-guard/backend/internal/labels"
 )
 
 type UpdateResult struct {
@@ -109,13 +110,16 @@ func (e *Engine) EvaluateAndUpgrade(ctx context.Context, containerID string, for
 	}, nil
 }
 
-func (e *Engine) startSandbox(ctx context.Context, orig container.InspectResponse, sandboxName string) (string, error) {
-	sandboxCfg := *orig.Config
+func (e *Engine) startSandbox(ctx context.Context, inspect dockerTypes.ContainerJSON, sandboxName string) (string, error) {
+	if inspect.Config == nil {
+		return "", fmt.Errorf("inspect config is nil")
+	}
+	sandboxCfg := *inspect.Config
 	sandboxCfg.Hostname = sandboxName
 	sandboxCfg.Labels = map[string]string{"guard.sandbox": "true"}
 
-	roBinds := make([]string, 0, len(orig.HostConfig.Binds))
-	for _, b := range orig.HostConfig.Binds {
+	roBinds := make([]string, 0, len(inspect.HostConfig.Binds))
+	for _, b := range inspect.HostConfig.Binds {
 		parts := strings.Split(b, ":")
 		if len(parts) >= 2 {
 			roBinds = append(roBinds, fmt.Sprintf("%s:%s:ro", parts[0], parts[1]))
@@ -124,7 +128,7 @@ func (e *Engine) startSandbox(ctx context.Context, orig container.InspectRespons
 
 	hostCfg := &container.HostConfig{
 		Binds:       roBinds,
-		NetworkMode: orig.HostConfig.NetworkMode,
+		NetworkMode: inspect.HostConfig.NetworkMode,
 	}
 
 	resp, err := e.docker.ContainerCreate(ctx, &sandboxCfg, hostCfg, &network.NetworkingConfig{}, nil, sandboxName)
@@ -203,15 +207,15 @@ func (e *Engine) runRegressionTest(ctx context.Context, sandboxID, sandboxName s
 	return fmt.Errorf("regression test (%s) timed out after %s", cfg.TestStrategy, cfg.TestTimeout)
 }
 
-func (e *Engine) promoteToProduction(ctx context.Context, orig container.InspectResponse, name string) error {
+func (e *Engine) promoteToProduction(ctx context.Context, inspect dockerTypes.ContainerJSON, name string) error {
 	timeout := 15
-	_ = e.docker.ContainerStop(ctx, orig.ID, container.StopOptions{Timeout: &timeout})
-	if err := e.docker.ContainerRemove(ctx, orig.ID, container.RemoveOptions{}); err != nil {
+	_ = e.docker.ContainerStop(ctx, inspect.ID, container.StopOptions{Timeout: &timeout})
+	if err := e.docker.ContainerRemove(ctx, inspect.ID, container.RemoveOptions{}); err != nil {
 		return err
 	}
 
-	netCfg := &network.NetworkingConfig{EndpointsConfig: orig.NetworkSettings.Networks}
-	created, err := e.docker.ContainerCreate(ctx, orig.Config, orig.HostConfig, netCfg, nil, name)
+	netCfg := &network.NetworkingConfig{EndpointsConfig: inspect.NetworkSettings.Networks}
+	created, err := e.docker.ContainerCreate(ctx, inspect.Config, inspect.HostConfig, netCfg, nil, name)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,7 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/ssh"
-	"homelab-guard/internal/crypto"
+	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
 	_ "modernc.org/sqlite"
 )
 

@@ -8,6 +8,7 @@ RUN npm run build
 FROM golang:1.23-bookworm AS go-builder
 WORKDIR /build
 COPY backend/go.mod ./
+COPY backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=ui-builder /ui/dist ./web/dist

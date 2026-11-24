@@ -15,8 +15,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
-	"homelab-guard/internal/labels"
-	"homelab-guard/internal/updater"
+	"github.com/overyanosh/homelab-guard/backend/internal/labels"
+	"github.com/overyanosh/homelab-guard/backend/internal/updater"
 )
 
 type AgentMessage struct {

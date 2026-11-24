@@ -16,14 +16,14 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
-	"homelab-guard/internal/agenthub"
-	"homelab-guard/internal/crypto"
-	"homelab-guard/internal/labels"
-	"homelab-guard/internal/proxmox"
-	sshbastion "homelab-guard/internal/ssh"
-	"homelab-guard/internal/store"
-	"homelab-guard/internal/updater"
-	"homelab-guard/web"
+	"github.com/overyanosh/homelab-guard/backend/internal/agenthub"
+	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
+	"github.com/overyanosh/homelab-guard/backend/internal/labels"
+	"github.com/overyanosh/homelab-guard/backend/internal/proxmox"
+	sshbastion "github.com/overyanosh/homelab-guard/backend/internal/ssh"
+	"github.com/overyanosh/homelab-guard/backend/internal/store"
+	"github.com/overyanosh/homelab-guard/backend/internal/updater"
+	"github.com/overyanosh/homelab-guard/backend/web"
 )
 
 type ContainerSummary struct {
