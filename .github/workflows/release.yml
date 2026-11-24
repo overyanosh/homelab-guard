@@ -1,4 +1,4 @@
-name: Build & Publish Multi-Arch Images
+name: Build & Publish Multi-Arch Images (v20261124 - Go Docker API Fix)
 
 on:
   push:
