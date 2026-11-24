@@ -5,7 +5,7 @@ deploy/data/
 .env
 frontend/node_modules/
 frontend/dist/
-backend/web/dist/
+backend/web/dist/*
 !backend/web/dist/.gitkeep
 ai-worker/.venv/
 __pycache__/
