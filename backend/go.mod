@@ -3,7 +3,7 @@ module github.com/overyanosh/homelab-guard/backend
 go 1.26.0
 
 require (
-	github.com/docker/docker v25.0.3+incompatible
+	github.com/docker/docker v27.3.1+incompatible
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.29.0
 	modernc.org/sqlite v1.34.1
