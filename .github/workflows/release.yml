@@ -9,8 +9,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  SERVER_IMAGE: ${{ github.repository }}
-  AGENT_IMAGE: ${{ github.repository }}-agent
 
 jobs:
   test:
@@ -38,10 +36,10 @@ jobs:
         include:
           - name: server
             dockerfile: Dockerfile
-            image: ${{ env.SERVER_IMAGE }}
+            image: ${{ github.repository }}
           - name: agent
             dockerfile: agent/Dockerfile
-            image: ${{ env.AGENT_IMAGE }}
+            image: ${{ github.repository }}-agent
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
