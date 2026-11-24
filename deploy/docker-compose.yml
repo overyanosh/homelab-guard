@@ -1,0 +1,22 @@
+services:
+  homelab-guard:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: homelab-guard
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "8443:8443"
+    environment:
+      - TZ=Europe/Paris
+      - MASTER_KEY=${MASTER_KEY}
+      - AI_BASE_URL=${AI_BASE_URL:-http://host.docker.internal:11434/v1}
+      - AI_API_KEY=${AI_API_KEY:-sk-local}
+      - AI_MODEL=${AI_MODEL:-qwen2.5-coder:14b}
+    volumes:
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
