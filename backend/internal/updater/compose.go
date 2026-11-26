@@ -89,7 +89,8 @@ func substituteEnv(s string, vars map[string]string) string {
 }
 
 // ParseComposeService extracts a single service definition from a compose YAML
-// document, expanding ${VAR} references using vars.
+// document, expanding ${VAR} references using vars. The service is resolved by:
+// exact key, then a matching container_name, then the only declared service.
 func ParseComposeService(doc, service string, vars map[string]string) (*ComposeService, error) {
 	var parsed struct {
 		Services map[string]map[string]any `yaml:"services"`
@@ -101,15 +102,32 @@ func ParseComposeService(doc, service string, vars map[string]string) (*ComposeS
 		return nil, fmt.Errorf("compose file declares no services")
 	}
 
+	names := make([]string, 0, len(parsed.Services))
+	for name := range parsed.Services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	rawSvc, ok := parsed.Services[service]
 	if !ok {
-		// Fall back to the only service when the requested name differs.
-		if len(parsed.Services) == 1 {
-			for name, s := range parsed.Services {
-				service, rawSvc = name, s
+		// A service may declare container_name different from its key.
+		for _, name := range names {
+			if cn, _ := parsed.Services[name]["container_name"].(string); strings.TrimSpace(cn) == service {
+				service, rawSvc, ok = name, parsed.Services[name], true
+				break
 			}
+		}
+	}
+	if !ok {
+		// Without an explicit choice, a single-service file is unambiguous.
+		if len(parsed.Services) == 1 {
+			service = names[0]
+			rawSvc = parsed.Services[service]
 		} else {
-			return nil, fmt.Errorf("service %q not found in compose file", service)
+			return nil, fmt.Errorf(
+				"service %q introuvable — services disponibles : %s. Indiquez le service à déployer.",
+				service, strings.Join(names, ", "),
+			)
 		}
 	}
 
@@ -349,9 +367,12 @@ func (e *Engine) ApplyCompose(ctx context.Context, containerID, service, compose
 
 // CreateFromCompose creates and starts a brand-new container from a compose
 // service definition. On failure the half-created container is removed.
-func (e *Engine) CreateFromCompose(ctx context.Context, name, composeDoc, dotEnv string) (*ApplyResult, error) {
+func (e *Engine) CreateFromCompose(ctx context.Context, name, service, composeDoc, dotEnv string) (*ApplyResult, error) {
 	vars := ParseDotEnv(dotEnv)
-	svc, err := ParseComposeService(composeDoc, name, vars)
+	if strings.TrimSpace(service) == "" {
+		service = name
+	}
+	svc, err := ParseComposeService(composeDoc, service, vars)
 	if err != nil {
 		return nil, err
 	}

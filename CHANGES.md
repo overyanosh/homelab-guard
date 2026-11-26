@@ -1,5 +1,35 @@
 # Changelog - Homelab Guard
 
+## Version 0.8.3 (2026-11-27)
+
+### 🎉 Compose multi-services : choix du service à déployer
+
+Ajouter un service à un compose existant ne provoque plus d'erreur
+`service "X" not found in compose file`.
+
+- La résolution du service est désormais plus tolérante, dans cet ordre :
+  1. clé de service égale au nom du conteneur ;
+  2. service dont `container_name` correspond au conteneur ;
+  3. unique service du fichier ;
+  4. sinon **message explicite** listant les services disponibles.
+- Un **sélecteur « Service »** apparaît dans les deux modales dès que le compose
+  contient plusieurs services :
+  - présélection automatique sur le service correspondant au conteneur ;
+  - si aucun ne correspond, l'action (**Créer** / **Enregistrer et Appliquer**)
+    reste **désactivée** jusqu'à ce qu'un service soit choisi — pas d'application
+    accidentelle d'une autre définition.
+- Le service sélectionné est transmis au backend (`service` dans le corps de
+  `POST /api/docker/containers/compose` et
+  `POST /api/docker/containers/{id}/compose/apply`).
+- L'avertissement est reformulé : « N services définis : sélectionnez le service
+  à déployer dans la liste ».
+
+### 💡 Créer le nouveau service sous un autre nom
+
+La modale « Nouveau conteneur » permet de **créer un conteneur portant un nom
+différent du service** (ex. service `redis` → conteneur `redis-copy`), ce qui
+permet de déployer un second service du même fichier compose.
+
 ## Version 0.8.2 (2026-11-27)
 
 ### 🎉 Validation appliquée aussi à « Enregistrer et Appliquer »

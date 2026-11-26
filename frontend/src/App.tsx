@@ -156,6 +156,7 @@ export default function App() {
   const [composeTab, setComposeTab] = useState<'compose' | 'env'>('compose');
   const [composeSource, setComposeSource] = useState<'stored' | 'generated'>('generated');
   const [composeMsg, setComposeMsg] = useState<string | null>(null);
+  const [applyService, setApplyService] = useState('');
   const [composeValidation, setComposeValidation] = useState<ValidationResult | null>(null);
   const [composeValidating, setComposeValidating] = useState(false);
   const [composeApplying, setComposeApplying] = useState(false);
@@ -174,6 +175,7 @@ export default function App() {
   const [createEnvExists, setCreateEnvExists] = useState(false);
   const [createTab, setCreateTab] = useState<'compose' | 'env'>('compose');
   const [createTouched, setCreateTouched] = useState(false);
+  const [createService, setCreateService] = useState('');
   const [creating, setCreating] = useState(false);
   const [createMsg, setCreateMsg] = useState<string | null>(null);
   const [createResult, setCreateResult] = useState<{
@@ -264,6 +266,7 @@ export default function App() {
     setCreateEnvExists(false);
     setCreateTab('compose');
     setCreateTouched(false);
+    setCreateService('');
     setCreateMsg(null);
     setCreateResult(null);
     setValidation(null);
@@ -287,6 +290,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: createName.trim(),
+          service: createService,
           yaml: createYaml,
           env: createEnvExists ? createEnv : '',
         }),
@@ -335,6 +339,29 @@ export default function App() {
     }, 350);
     return () => clearTimeout(timer);
   }, [createOpen, createYaml, createEnv, createEnvExists]);
+
+  // Pick a sensible default service: by name, else the only one.
+  useEffect(() => {
+    const services = validation?.services ?? [];
+    if (services.length === 0) return;
+    setCreateService((prev) => {
+      if (prev && services.includes(prev)) return prev;
+      const byName = services.find((s) => s === createName.trim());
+      if (byName) return byName;
+      return services.length === 1 ? services[0] : '';
+    });
+  }, [validation, createName]);
+
+  useEffect(() => {
+    const services = composeValidation?.services ?? [];
+    if (services.length === 0) return;
+    setApplyService((prev) => {
+      if (prev && services.includes(prev)) return prev;
+      const byName = services.find((s) => s === composeService);
+      if (byName) return byName;
+      return services.length === 1 ? services[0] : '';
+    });
+  }, [composeValidation, composeService]);
 
   // Debounced validation for the existing container's compose editor.
   useEffect(() => {
@@ -418,7 +445,11 @@ export default function App() {
       const res = await fetch(`/api/docker/containers/${composeContainerId}/compose`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ yaml: composeYaml, env: composeEnvExists ? composeEnv : '' }),
+        body: JSON.stringify({
+          service: applyService,
+          yaml: composeYaml,
+          env: composeEnvExists ? composeEnv : '',
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -453,7 +484,11 @@ export default function App() {
       const res = await fetch(`/api/docker/containers/${composeContainerId}/compose/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ yaml: composeYaml, env: composeEnvExists ? composeEnv : '' }),
+        body: JSON.stringify({
+          service: applyService,
+          yaml: composeYaml,
+          env: composeEnvExists ? composeEnv : '',
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -983,6 +1018,23 @@ export default function App() {
                     </button>
                   )}
                   <EnvGapBadge validation={validation} />
+                  {(validation?.services.length ?? 0) > 1 && (
+                    <div className="ml-auto flex items-center gap-2 mb-1">
+                      <span className="text-[11px] text-stone-500">Service</span>
+                      <select
+                        value={createService}
+                        onChange={(e) => setCreateService(e.target.value)}
+                        className="rounded-md border border-[#2E2A27] bg-[#121110] px-2 py-1 font-mono text-xs text-orange-300 focus:border-orange-500 focus:outline-none"
+                      >
+                        <option value="">— sélectionner —</option>
+                        {validation?.services.map((svc) => (
+                          <option key={svc} value={svc}>
+                            {svc}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {createTab === 'compose' ? (
@@ -1019,7 +1071,8 @@ export default function App() {
                         creating ||
                         !createName.trim() ||
                         validating ||
-                        (validation !== null && !validation.valid)
+                        (validation !== null && !validation.valid) ||
+                        ((validation?.services.length ?? 0) > 1 && !createService)
                       }
                       title={
                         validation && !validation.valid
@@ -1180,6 +1233,23 @@ export default function App() {
                         </button>
                       )}
                       <EnvGapBadge validation={composeValidation} />
+                      {(composeValidation?.services.length ?? 0) > 1 && (
+                        <div className="ml-auto flex items-center gap-2 mb-1">
+                          <span className="text-[11px] text-stone-500">Service</span>
+                          <select
+                            value={applyService}
+                            onChange={(e) => setApplyService(e.target.value)}
+                            className="rounded-md border border-[#2E2A27] bg-[#121110] px-2 py-1 font-mono text-xs text-orange-300 focus:border-orange-500 focus:outline-none"
+                          >
+                            <option value="">— sélectionner —</option>
+                            {composeValidation?.services.map((svc) => (
+                              <option key={svc} value={svc}>
+                                {svc}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     {composeTab === 'compose' ? (
@@ -1231,7 +1301,8 @@ export default function App() {
                             composeSaving ||
                             composeApplying ||
                             composeValidating ||
-                            (composeValidation !== null && !composeValidation.valid)
+                            (composeValidation !== null && !composeValidation.valid) ||
+                            ((composeValidation?.services.length ?? 0) > 1 && !applyService)
                           }
                           title={
                             composeValidation && !composeValidation.valid

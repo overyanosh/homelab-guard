@@ -410,9 +410,10 @@ func main() {
 	// --- Save & apply: recreate the container from the compose definition ---
 	mux.HandleFunc("POST /api/docker/containers/compose", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Name string `json:"name"`
-			YAML string `json:"yaml"`
-			Env  string `json:"env"`
+			Name    string `json:"name"`
+			Service string `json:"service"`
+			YAML    string `json:"yaml"`
+			Env     string `json:"env"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
@@ -428,7 +429,7 @@ func main() {
 			return
 		}
 
-		result, err := updateEngine.CreateFromCompose(r.Context(), name, req.YAML, req.Env)
+		result, err := updateEngine.CreateFromCompose(r.Context(), name, strings.TrimSpace(req.Service), req.YAML, req.Env)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -443,8 +444,9 @@ func main() {
 	mux.HandleFunc("POST /api/docker/containers/{id}/compose/apply", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		var req struct {
-			YAML string `json:"yaml"`
-			Env  string `json:"env"`
+			Service string `json:"service"`
+			YAML    string `json:"yaml"`
+			Env     string `json:"env"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
@@ -455,7 +457,10 @@ func main() {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		service := strings.TrimPrefix(insp.Name, "/")
+		service := strings.TrimSpace(req.Service)
+		if service == "" {
+			service = strings.TrimPrefix(insp.Name, "/")
+		}
 		if service == "" {
 			service = id
 		}

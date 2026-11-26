@@ -217,7 +217,9 @@ func ValidateCompose(doc, dotEnv string) ValidationResult {
 	}
 
 	if len(res.Services) > 1 {
-		warnf(0, 0, "services", fmt.Sprintf("%d services définis : seul celui correspondant au nom du conteneur sera créé", len(res.Services)))
+		sort.Strings(res.Services)
+		warnf(0, 0, "services", fmt.Sprintf(
+			"%d services définis : sélectionnez le service à déployer dans la liste", len(res.Services)))
 	}
 
 	res.Valid = len(res.Errors) == 0
