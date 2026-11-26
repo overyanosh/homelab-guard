@@ -1,5 +1,58 @@
 # Changelog - Homelab Guard
 
+## Version 0.6.0 (2026-11-26)
+
+### 🎉 Sous-menu de gestion des ressources
+
+Le module « Podman, Docker & Swarm » possède désormais un **sous-menu** :
+
+`Conteneurs` | `Réseaux` | `Images` | `Volumes`
+
+#### Barre « Espace disque » (visible sur tous les onglets)
+- Taille des **images**, des **couches d'écriture des conteneurs**, des
+  **volumes** et du **cache de build**.
+- Met en avant l'**espace récupérable** (images et volumes non utilisés).
+- Bouton **« Récupérer l'espace »** : enchaîne la suppression des images
+  inutilisées, des volumes non montés et du cache de build, puis affiche la
+  quantité réellement libérée.
+
+#### Réseaux
+- Liste (nom, driver, portée, nombre de conteneurs, utilisé/inutilisé).
+- Création : nom, driver (`bridge`, `macvlan`, `ipvlan`, `overlay`), sous-réseau,
+  option « réseau interne ».
+- Suppression unitaire (désactivée si des conteneurs y sont attachés) et
+  **« Supprimer les inutilisés »**.
+
+#### Images
+- Liste triée **images inutilisées d'abord**, avec taille, date, tags/`dangling`,
+  et badge **utilisée / inutilisée** calculé à partir des conteneurs existants.
+- Compteur « N inutilisée(s) · X Go » et filtre **« Inutilisées seulement »**.
+- Suppression unitaire forcée + **« Supprimer les inutilisées »** avec espace
+  récupéré.
+
+#### Volumes (données temporaires des conteneurs)
+- Liste (nom, driver, taille, nombre de montages, utilisé/inutilisé).
+- Création et suppression (forcée, avec confirmation explicite sur la perte de
+  données).
+- **« Supprimer les non utilisés »** avec espace récupéré.
+
+### 🔧 Backend
+- `GET/POST /api/docker/networks`, `DELETE /api/docker/networks/{id}`,
+  `POST /api/docker/networks/prune`
+- `GET /api/docker/images`, `DELETE /api/docker/images/{id}`,
+  `POST /api/docker/images/prune`
+- `GET/POST /api/docker/volumes`, `DELETE /api/docker/volumes/{name}`,
+  `POST /api/docker/volumes/prune`
+- `GET /api/docker/disk-usage`, `POST /api/docker/build-cache/prune`
+- Nouveau fichier `backend/cmd/server/resources.go`
+
+### ⚠️ Notes Podman
+- Le cache de build n'est pas exposé par l'API compatible Docker de Podman :
+  l'endpoint répond `supported: false` avec un message explicite au lieu d'une
+  erreur.
+- Les volumes et images « utilisés » sont déterminés par croisement avec les
+  conteneurs existants (pas seulement par les compteurs du démon).
+
 ## Version 0.5.0 (2026-11-26)
 
 ### 🎉 « Enregistrer et Appliquer » dans l'éditeur de compose

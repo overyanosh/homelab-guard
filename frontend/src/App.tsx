@@ -19,12 +19,22 @@ import {
   Plus,
   Rocket,
   Save,
+  Network,
+  Layers,
+  Database,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
 import { DockerSettings, ProxmoxSettings, SshSettings, AiSettings } from './components/SettingsPanels';
+import {
+  DiskUsageBar,
+  NetworksPanel,
+  ImagesPanel,
+  VolumesPanel,
+} from './components/DockerResources';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
+type DockerTab = 'containers' | 'networks' | 'images' | 'volumes';
 
 interface ContainerItem {
   id: string;
@@ -76,6 +86,8 @@ const SETTINGS_LABEL: Record<Tab, string> = {
 export default function App() {
   const [tab, setTab] = useState<Tab>('docker');
   const [settingsTab, setSettingsTab] = useState<Tab | null>(null);
+  const [dockerTab, setDockerTab] = useState<DockerTab>('containers');
+  const [resourceRefresh, setResourceRefresh] = useState(0);
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [pveResources, setPveResources] = useState<PveResource[]>([]);
   const [sshHosts, setSshHosts] = useState<SshHost[]>([]);
@@ -393,24 +405,64 @@ export default function App() {
           <>
             {tab === 'docker' && (
               <section>
-                <div className="flex justify-between items-center mb-6">
-                  <h1 className="text-xl font-semibold">Conteneurs Podman, Docker & Swarm</h1>
+                <div className="flex justify-between items-center mb-4">
+                  <h1 className="text-xl font-semibold">Podman, Docker & Swarm</h1>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={loadDocker}
+                      onClick={() => {
+                        loadDocker();
+                        setResourceRefresh((v) => v + 1);
+                      }}
                       className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#2E2A27] hover:bg-orange-600 text-sm transition-colors"
                     >
                       <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualiser
                     </button>
                     <button
                       onClick={() => openSettings('docker')}
-                      title="Réglages Docker & Swarm"
+                      title="Réglages Podman, Docker & Swarm"
                       className="p-2 rounded-md bg-[#2E2A27] hover:bg-orange-600 text-stone-300 hover:text-white transition-colors"
                     >
                       <Settings className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
+
+                <nav className="flex flex-wrap items-center gap-1 mb-6 border-b border-[#2E2A27]">
+                  {(
+                    [
+                      { id: 'containers', label: 'Conteneurs', icon: Box },
+                      { id: 'networks', label: 'Réseaux', icon: Network },
+                      { id: 'images', label: 'Images', icon: Layers },
+                      { id: 'volumes', label: 'Volumes', icon: Database },
+                    ] as { id: DockerTab; label: string; icon: LucideIcon }[]
+                  ).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      onClick={() => setDockerTab(id)}
+                      className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                        dockerTab === id
+                          ? 'border-orange-500 text-orange-500'
+                          : 'border-transparent text-stone-400 hover:text-stone-200'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" /> {label}
+                    </button>
+                  ))}
+                </nav>
+
+                <DiskUsageBar refreshKey={resourceRefresh} />
+
+                {dockerTab === 'networks' && (
+                  <NetworksPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                )}
+                {dockerTab === 'images' && (
+                  <ImagesPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                )}
+                {dockerTab === 'volumes' && (
+                  <VolumesPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                )}
+
+                {dockerTab === 'containers' && (
                 <div className="overflow-x-auto rounded-xl border border-[#2E2A27] bg-[#1C1A18]/40">
                   <table className="w-full text-left text-sm">
                     <thead className="border-b border-[#2E2A27] text-stone-400">
@@ -491,6 +543,7 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </section>
             )}
 

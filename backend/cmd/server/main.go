@@ -67,6 +67,9 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// Networks, images, volumes and disk-usage management.
+	registerResourceRoutes(mux, dockerCli)
+
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "homelab-guard"})
 	})
