@@ -438,7 +438,7 @@ func main() {
 
 	mux.Handle("/", web.SPAHandler())
 
-	addr := ":8443"
+	addr := ":9015"
 	log.Printf("Homelab Guard Core listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
