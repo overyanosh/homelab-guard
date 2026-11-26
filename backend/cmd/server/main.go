@@ -69,12 +69,26 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "homelab-guard"})
 	})
 
-	// --- Auto-register Local Agent ---
+	// --- Auto-register Local Agent (skip if already exists) ---
 	localAgentNode, err := dbStore.CreateAgentNode("Local Host")
 	if err != nil {
-		log.Printf("Warning: Could not auto-register local agent: %v", err)
+		// Check if it's just a duplicate name error
+		log.Printf("Note: Checking for existing local agent... %v", err)
+		// Try to get existing node
+		nodes, _ := dbStore.ListAgentNodes()
+		for _, n := range nodes {
+			if strings.Contains(n.Name, "Local") {
+				localAgentNode = &n
+				break
+			}
+		}
+		if localAgentNode != nil {
+			log.Printf("✅ Found existing local agent (ID: %d, Name: %s)", localAgentNode.ID, localAgentNode.Name)
+		} else {
+			log.Printf("Warning: Could not register local agent: %v", err)
+		}
 	} else {
-		log.Printf("✅ Local agent auto-registered (ID: %d, Name: %s)", localAgentNode.ID, localAgentNode.Name)
+		log.Printf("✅ New local agent auto-registered (ID: %d, Name: %s)", localAgentNode.ID, localAgentNode.Name)
 	}
 
 	// --- Remote Agent Hub ---

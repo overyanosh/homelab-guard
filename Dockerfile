@@ -26,5 +26,5 @@ COPY ai-worker/ ./ai-worker/
 RUN mkdir -p /data && useradd -r -u 10001 guard
 USER guard
 
-EXPOSE 8443
+EXPOSE 9015
 CMD ["sh", "-c", "uvicorn ai-worker.main:app --host 127.0.0.1 --port 8001 & exec homelab-guard"]
