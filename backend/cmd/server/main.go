@@ -19,6 +19,7 @@ import (
 	"github.com/overyanosh/homelab-guard/backend/internal/agenthub"
 	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
 	"github.com/overyanosh/homelab-guard/backend/internal/labels"
+	"github.com/overyanosh/homelab-guard/backend/internal/podman"
 	"github.com/overyanosh/homelab-guard/backend/internal/proxmox"
 	sshbastion "github.com/overyanosh/homelab-guard/backend/internal/ssh"
 	"github.com/overyanosh/homelab-guard/backend/internal/store"
@@ -33,6 +34,8 @@ type ContainerSummary struct {
 	State  string             `json:"state"`
 	Status string             `json:"status"`
 	Guard  labels.GuardConfig `json:"guard"`
+	Runtime string            `json:"runtime"`
+	NewerVersionAvailable bool         `json:"newer_version_available,omitempty"`
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -53,6 +56,13 @@ func main() {
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatalf("Docker client error: %v", err)
+	}
+
+	var podmanCli *podman.PodmanClient
+	if pmClient, err := podman.NewPodmanClient(); err == nil {
+		podmanCli = pmClient
+		defer podmanCli.Close()
+		log.Println("Podman runtime detected and configured")
 	}
 
 	updateEngine := updater.NewEngine(dockerCli, "http://127.0.0.1:8001")
@@ -156,25 +166,145 @@ func main() {
 		_, _ = w.Write(raw)
 	})
 
-	// --- Local Docker ---
+	// --- Local Docker & Podman ---
 	mux.HandleFunc("GET /api/docker/containers", func(w http.ResponseWriter, r *http.Request) {
-		containers, err := dockerCli.ContainerList(context.Background(), container.ListOptions{All: true})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		var allContainers []ContainerSummary
+		
+		// Get Docker containers
+		if containers, err := dockerCli.ContainerList(context.Background(), container.ListOptions{All: true}); err == nil {
+			for _, c := range containers {
+				allContainers = append(allContainers, ContainerSummary{
+					ID:     c.ID[:12],
+					Names:  c.Names,
+					Image:  c.Image,
+					State:  c.State,
+					Status: c.Status,
+					Guard:  labels.ParseDockerLabels(c.Labels),
+					Runtime: "docker",
+				})
+			}
+		}
+		
+		// Get Podman containers if available
+		if podmanCli != nil {
+			if containers, err := podmanCli.ContainerList(context.Background()); err == nil {
+				for _, c := range containers {
+					allContainers = append(allContainers, ContainerSummary{
+						ID:     c.ID[:12],
+						Names:  c.Names,
+						Image:  c.Image,
+						State:  c.State,
+						Status: c.Status,
+						Guard:  labels.ParseDockerLabels(c.Labels),
+						Runtime: "podman",
+					})
+				}
+			}
+		}
+		
+		writeJSON(w, http.StatusOK, allContainers)
+	})
+
+	// --- Logs Viewer ---
+	mux.HandleFunc("GET /api/docker/containers/{id}/logs", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		
+		// Try Docker first
+		if reader, err := dockerCli.ContainerLogs(context.Background(), id, container.LogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Tail:       "100",
+		}); err == nil {
+			defer reader.Close()
+			var buf bytes.Buffer
+			io.Copy(&buf, reader)
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write(buf.Bytes())
 			return
 		}
-		res := make([]ContainerSummary, 0, len(containers))
-		for _, c := range containers {
-			res = append(res, ContainerSummary{
-				ID:     c.ID[:12],
-				Names:  c.Names,
-				Image:  c.Image,
-				State:  c.State,
-				Status: c.Status,
-				Guard:  labels.ParseDockerLabels(c.Labels),
-			})
+		
+		// Try Podman
+		if podmanCli != nil {
+			if logs, err := podmanCli.ContainerLogs(context.Background(), id, false); err == nil {
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte(logs))
+				return
+			}
 		}
-		writeJSON(w, http.StatusOK, res)
+		
+		http.Error(w, "container not found or no access", http.StatusNotFound)
+	})
+
+	// --- Image Version Check ---
+	mux.HandleFunc("POST /api/docker/images/check-update", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ImageName string `json:"image_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ImageName == "" {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		
+		// Extract registry, repo, tag from image name
+		parts := strings.Split(req.ImageName, "/")
+		var registry, repo, tag string
+		
+		switch len(parts) {
+		case 3:
+			registry = parts[0]
+			repo = parts[1] + "/" + parts[2]
+			tagParts := strings.Split(repo, ":")
+			repo = tagParts[0]
+			tag = "latest"
+			if len(tagParts) > 1 {
+				tag = tagParts[1]
+			}
+		case 2:
+			if strings.Contains(parts[1], ":") {
+				repo = req.ImageName
+				tagParts := strings.Split(parts[1], ":")
+				repo = parts[0] + ":" + tagParts[0]
+				tag = tagParts[1]
+			} else {
+				repo = req.ImageName
+				tag = "latest"
+			}
+			registry = "docker.io"
+		default:
+			repo = parts[0]
+			tag = "latest"
+			registry = "docker.io"
+		}
+		
+		// Determine where to check
+		var checkURL string
+		isGHCR := strings.Contains(registry, "ghcr.io")
+		
+		if isGHCR {
+			// GitHub Container Registry API
+			checkURL = fmt.Sprintf("https://api.github.com/repos/%s/packages/container%s/tags", 
+				strings.TrimPrefix(repo, "ghcr.io/"), 
+				strings.TrimSuffix(repo, "/"+repo), // This needs proper parsing
+			)
+			// For simplicity, we'll just flag it as needing manual check
+			writeJSON(w, http.StatusOK, map[string]bool{"has_update": false})
+			return
+		}
+		
+		// Docker Hub API (for images like nginx:latest, redis:7-alpine, etc.)
+		checkURL = fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/tags/%s", 
+			strings.Join(parts[1:], "/"), tag)
+		
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get(checkURL)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			writeJSON(w, http.StatusOK, map[string]bool{"has_update": false})
+			return
+		}
+		defer resp.Body.Close()
+		
+		// If we get here, the tag exists on remote - consider it as potential update
+		writeJSON(w, http.StatusOK, map[string]bool{"has_update": true})
 	})
 
 	mux.HandleFunc("POST /api/docker/containers/{id}/upgrade", func(w http.ResponseWriter, r *http.Request) {

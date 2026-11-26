@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Shield, Box, Server, Terminal as TermIcon, Bot, RefreshCw, Play, Square, Camera, KeyRound } from 'lucide-react';
+import { Shield, Box, Server, Terminal as TermIcon, Bot, RefreshCw, Play, Square, Camera, KeyRound, Eye, PackageCheck } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
@@ -16,6 +16,8 @@ interface ContainerItem {
     update_mode: string;
     test_strategy: string;
   };
+  runtime: string;
+  newer_version_available?: boolean;
 }
 
 interface PveResource {
@@ -45,10 +47,74 @@ export default function App() {
   const [aiYaml, setAiYaml] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  
+  // New state for logs and updates
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
+  const [containerLogs, setContainerLogs] = useState('');
+  const [checkingUpdates, setCheckingUpdates] = useState<Record<string, boolean>>({});
+  const [newerVersions, setNewerVersions] = useState<Set<string>>(new Set());
 
   const loadDocker = async () => {
     const res = await fetch('/api/docker/containers');
-    if (res.ok) setContainers(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setContainers(data);
+      
+      // Check for newer versions after containers are loaded
+      await checkForNewerVersions(data);
+    }
+  };
+
+  const checkForNewerVersions = async (containersToCheck: ContainerItem[] = containers) => {
+    const checks: Promise<{id: string, hasUpdate: boolean}>[] = [];
+    
+    containersToCheck.forEach(c => {
+      if (c.newer_version_available === undefined && !checkingUpdates[c.id]) {
+        setCheckingUpdates(prev => ({...prev, [c.id]: true}));
+        checks.push(
+          fetch('/api/docker/images/check-update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({image_name: c.image}),
+          })
+            .then(res => res.json())
+            .then((data: {has_update: boolean}) => ({id: c.id, hasUpdate: data.has_update}))
+            .catch(() => ({id: c.id, hasUpdate: false}))
+            .finally(() => setCheckingUpdates(prev => ({...prev, [c.id]: false}))
+            )
+        );
+      }
+    });
+    
+    if (checks.length > 0) {
+      const results = await Promise.all(checks);
+      const updatedSet = new Set(newerVersions);
+      results.forEach(r => {
+        if (r.hasUpdate) {
+          updatedSet.add(r.id);
+        } else {
+          updatedSet.delete(r.id);
+        }
+      });
+      setNewerVersions(updatedSet);
+    }
+  };
+
+  const openLogs = async (id: string) => {
+    setSelectedContainerId(id);
+    setLogsModalOpen(true);
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/docker/containers/${id}/logs`);
+      if (res.ok) {
+        const text = await res.text();
+        setContainerLogs(text);
+      }
+    } catch (err) {
+      console.error('Failed to load logs:', err);
+    }
+    setLoading(false);
   };
 
   const loadProxmox = async () => {
@@ -132,9 +198,9 @@ export default function App() {
         {tab === 'docker' && (
           <section>
             <div className="flex justify-between items-center mb-6">
-              <h1 className="text-xl font-semibold">Conteneurs & Politiques guard.*</h1>
+              <h1 className="text-xl font-semibold">Conteneurs Docker & Podman</h1>
               <button onClick={loadDocker} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm">
-                <RefreshCw className="w-4 h-4" /> Actualiser
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualiser
               </button>
             </div>
             <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/40">
@@ -144,7 +210,10 @@ export default function App() {
                     <th className="p-3">Service</th>
                     <th className="p-3">Image</th>
                     <th className="p-3">État</th>
+                    <th className="p-3">Moteur</th>
                     <th className="p-3">Mode / Test</th>
+                    <th className="p-3">Mise à jour</th>
+                    <th className="p-3">Logs</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -158,8 +227,29 @@ export default function App() {
                           {c.state}
                         </span>
                       </td>
+                      <td className="p-3 text-xs text-slate-300 capitalize">
+                        {c.runtime || 'inconnu'}
+                      </td>
                       <td className="p-3 text-xs text-slate-300">
                         {c.guard.enabled ? `${c.guard.update_mode} (${c.guard.test_strategy})` : 'Non géré'}
+                      </td>
+                      <td className="p-3">
+                        {c.newer_version_available || newerVersions.has(c.id) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/15 text-green-400">
+                            <PackageCheck className="w-3 h-3" /> Nouvelle version
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button 
+                          onClick={() => openLogs(c.id)}
+                          className="p-1.5 rounded bg-slate-800 hover:bg-sky-600/30 text-slate-400 hover:text-sky-400 transition-colors"
+                          title="Voir les logs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                       <td className="p-3 text-right">
                         <button disabled={loading} onClick={() => triggerUpgrade(c.id)} className="px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-500 text-xs font-medium disabled:opacity-50">
@@ -245,6 +335,32 @@ export default function App() {
               </pre>
             )}
           </section>
+        )}
+
+        {/* Logs Modal */}
+        {logsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-4xl bg-slate-900 rounded-xl border border-slate-700 shadow-2xl">
+              <div className="flex items-center justify-between p-4 border-b border-slate-700">
+                <h3 className="text-lg font-semibold text-white">Logs du conteneur</h3>
+                <button onClick={() => setLogsModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 max-h-[60vh] overflow-y-auto">
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin text-sky-400" />
+                    <span className="ml-2 text-slate-400">Chargement des logs...</span>
+                  </div>
+                ) : (
+                  <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap bg-slate-950 p-4 rounded-lg overflow-x-auto max-h-[400px]">
+                    {containerLogs || 'Aucun log disponible'}
+                  </pre>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>
