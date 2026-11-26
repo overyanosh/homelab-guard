@@ -270,3 +270,43 @@ func (s *Store) ListProxmoxClusters() ([]ProxmoxCluster, error) {
 	}
 	return list, nil
 }
+
+// DeleteAgentNode removes a remote agent node. The self-registered local agent
+// (name containing "Local") is protected and can never be deleted.
+func (s *Store) DeleteAgentNode(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM agent_nodes WHERE id = ? AND name NOT LIKE '%Local%'`, id)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("node not found or protected (the local agent cannot be removed)")
+	}
+	return nil
+}
+
+// DeleteProxmoxCluster removes a stored Proxmox VE connection.
+func (s *Store) DeleteProxmoxCluster(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM proxmox_clusters WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("proxmox cluster not found")
+	}
+	return nil
+}
+
+// DeleteSSHHost removes a stored SSH bastion connection.
+func (s *Store) DeleteSSHHost(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM ssh_hosts WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("ssh host not found")
+	}
+	return nil
+}

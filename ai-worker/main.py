@@ -12,6 +12,15 @@ client = OpenAI(
 )
 MODEL = os.getenv("AI_MODEL", "qwen2.5-coder:14b")
 
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model": MODEL,
+        "base_url": str(client.base_url),
+    }
+
 SYSTEM_PROMPT = """Tu es l'agent d'exploitation de Homelab Guard.
 Génère uniquement du YAML docker-compose valide et sécurisé (no-new-privileges, réseaux isolés).
 Intègre systématiquement les labels guard.* pertinents :

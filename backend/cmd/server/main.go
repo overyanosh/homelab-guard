@@ -160,6 +160,19 @@ func main() {
 		writeJSON(w, http.StatusCreated, node)
 	})
 
+	mux.HandleFunc("DELETE /api/nodes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid node id", http.StatusBadRequest)
+			return
+		}
+		if err := dbStore.DeleteAgentNode(id); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("GET /api/nodes/{id}/containers", func(w http.ResponseWriter, r *http.Request) {
 		nodeID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil {
@@ -327,6 +340,19 @@ func main() {
 		writeJSON(w, http.StatusCreated, req)
 	})
 
+	mux.HandleFunc("DELETE /api/ssh/hosts/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid host id", http.StatusBadRequest)
+			return
+		}
+		if err := dbStore.DeleteSSHHost(id); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("GET /ws/ssh/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil {
@@ -370,6 +396,32 @@ func main() {
 		_, _ = io.Copy(w, resp.Body)
 	})
 
+	mux.HandleFunc("GET /api/ai/config", func(w http.ResponseWriter, r *http.Request) {
+		out := map[string]any{
+			"worker_online": false,
+			"model":         "",
+			"base_url":      "",
+		}
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Get("http://127.0.0.1:8001/health")
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var h struct {
+					Status  string `json:"status"`
+					Model   string `json:"model"`
+					BaseURL string `json:"base_url"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&h) == nil {
+					out["worker_online"] = true
+					out["model"] = h.Model
+					out["base_url"] = h.BaseURL
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+
 	// --- Proxmox VE ---
 	mux.HandleFunc("GET /api/proxmox/clusters", func(w http.ResponseWriter, r *http.Request) {
 		clusters, err := dbStore.ListProxmoxClusters()
@@ -399,6 +451,19 @@ func main() {
 		req.ID = id
 		req.TokenSecret = ""
 		writeJSON(w, http.StatusCreated, req)
+	})
+
+	mux.HandleFunc("DELETE /api/proxmox/clusters/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid cluster id", http.StatusBadRequest)
+			return
+		}
+		if err := dbStore.DeleteProxmoxCluster(id); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.HandleFunc("GET /api/proxmox/clusters/{id}/resources", func(w http.ResponseWriter, r *http.Request) {

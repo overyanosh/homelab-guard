@@ -1,5 +1,42 @@
 # Changelog - Homelab Guard
 
+## Version 0.3.0 (2026-11-26)
+
+### 🎉 Pages de réglages par module
+
+Chaque section du menu latéral dispose désormais d'une icône d'engrenage (⚙) en fin
+de ligne, ouvrant une page de réglages dédiée.
+
+#### Docker & Swarm
+- Formulaire de **déploiement d'un nouvel agent** Docker ou Podman (nom, runtime,
+  URL du serveur Guard).
+- Génération du **jeton d'enrôlement** (affiché une seule fois) et de la commande
+  `docker/podman run` prête à coller, avec bouton « Copier ».
+- Liste des agents enregistrés avec état en ligne/hors ligne et suppression.
+- **L'agent local est protégé** : impossible à supprimer (badge « local »).
+
+#### Proxmox VE
+- Formulaire de **nouvelle connexion** (nom, endpoint, token ID/secret, TLS).
+- La connexion est testée avant enregistrement.
+- Liste des connexions enregistrées avec suppression.
+
+#### Bastion SSH
+- Formulaire de **nouvelle connexion SSH** (nom, hôte, port, utilisateur).
+- Génération automatique d'une paire de clés Ed25519 ; la clé publique est
+  affichée (avec bouton « Copier ») pour l'ajouter à `authorized_keys`.
+- Liste des hôtes enregistrés avec suppression.
+
+#### Agent IA & Ops
+- Page d'état du worker IA : en ligne/hors ligne, modèle et endpoint.
+- Bouton « Tester » (via `GET /api/ai/config`).
+
+### 🔧 Backend
+- `DELETE /api/nodes/{id}` (protège l'agent local)
+- `DELETE /api/proxmox/clusters/{id}`
+- `DELETE /api/ssh/hosts/{id}`
+- `GET /api/ai/config` (état + configuration non sensible du worker)
+- `GET /health` ajouté au worker IA
+
 ## Version 0.2.0 (2026-11-26)
 
 ### 🎉 Nouvelles Fonctionnalités
