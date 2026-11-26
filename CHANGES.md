@@ -1,5 +1,32 @@
 # Changelog - Homelab Guard
 
+## Version 0.8.2 (2026-11-27)
+
+### 🎉 Validation appliquée aussi à « Enregistrer et Appliquer »
+
+La modale Compose des conteneurs **existants** profite désormais de la même
+validation que la création :
+
+- Analyse **en direct** (debounce 350 ms) du compose et du `.env`.
+- Bandeau **vert** (valide + services), **rouge** (erreurs avec ligne/champ) et
+  **orange** (avertissements).
+- **Clés `.env` manquantes ajoutées automatiquement**, avec compteur sur
+  l'onglet `.env` et champs de saisie inline (masqués si nom sensible).
+- Le bouton **« Enregistrer et Appliquer » est désactivé** tant que le compose
+  est invalide ou en cours d'analyse, avec infobulle explicative.
+- **« Enregistrer »** reste disponible : il est possible de conserver un
+  brouillon non valide sans toucher au conteneur.
+
+### 🛡 Backend
+- `POST /api/docker/containers/{id}/compose/apply` **valide avant toute action** :
+  si le compose est invalide, réponse **HTTP 400** avec le résultat structuré et
+  le conteneur en cours n'est **pas modifié** (ni renommé, ni arrêté).
+
+### ♻️ Refactor frontend
+- Nouveau composant partagé `components/ComposeValidation.tsx`
+  (`ComposeValidationPanel`, `EnvGapBadge`, helpers `envKeys` / `setEnvValue` /
+  `addEnvKeys`), utilisé par les deux modales — plus de duplication.
+
 ## Version 0.8.1 (2026-11-27)
 
 ### 🎉 Variables `.env` manquantes : clés ajoutées automatiquement

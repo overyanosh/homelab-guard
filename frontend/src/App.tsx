@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   Shield,
-  Lock,
   Box,
   Server,
   Terminal as TermIcon,
@@ -25,8 +24,6 @@ import {
   Database,
   Loader2,
   Plug,
-  CheckCircle2,
-  AlertCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -37,6 +34,12 @@ import {
   ImagesPanel,
   VolumesPanel,
 } from './components/DockerResources';
+import {
+  ComposeValidationPanel,
+  EnvGapBadge,
+  addEnvKeys,
+  type ValidationResult,
+} from './components/ComposeValidation';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
 type DockerTab = 'containers' | 'networks' | 'images' | 'volumes';
@@ -153,6 +156,8 @@ export default function App() {
   const [composeTab, setComposeTab] = useState<'compose' | 'env'>('compose');
   const [composeSource, setComposeSource] = useState<'stored' | 'generated'>('generated');
   const [composeMsg, setComposeMsg] = useState<string | null>(null);
+  const [composeValidation, setComposeValidation] = useState<ValidationResult | null>(null);
+  const [composeValidating, setComposeValidating] = useState(false);
   const [composeApplying, setComposeApplying] = useState(false);
   const [composeApplyResult, setComposeApplyResult] = useState<{
     status: string;
@@ -180,14 +185,7 @@ export default function App() {
   } | null>(null);
 
   // Live compose validation
-  const [validation, setValidation] = useState<{
-    valid: boolean;
-    errors: { severity: string; line?: number; field?: string; message: string }[];
-    warnings: { severity: string; line?: number; field?: string; message: string }[];
-    services: string[];
-    missing_env?: string[];
-    empty_env?: string[];
-  } | null>(null);
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validating, setValidating] = useState(false);
 
   const loadDocker = async () => {
@@ -257,31 +255,6 @@ export default function App() {
     ports:
       - "8080:80"
 `;
-
-  // --- .env helpers -------------------------------------------------------
-  const envKeys = (text: string): string[] =>
-    text
-      .split('\n')
-      .map((line) => line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/))
-      .filter((m): m is RegExpMatchArray => m !== null)
-      .map((m) => m[1]);
-
-  const setEnvValue = (text: string, key: string, value: string): string => {
-    const lines = text.split('\n');
-    let found = false;
-    const updated = lines.map((line) => {
-      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
-      if (m && m[1] === key) {
-        found = true;
-        return `${key}=${value}`;
-      }
-      return line;
-    });
-    if (!found) updated.push(`${key}=${value}`);
-    return updated.join('\n');
-  };
-
-  const isSensitiveKey = (key: string) => /KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD/i.test(key);
 
   const openCreate = () => {
     setCreateOpen(true);
@@ -363,6 +336,40 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [createOpen, createYaml, createEnv, createEnvExists]);
 
+  // Debounced validation for the existing container's compose editor.
+  useEffect(() => {
+    if (!composeOpen || composeLoading) return;
+    const timer = setTimeout(async () => {
+      setComposeValidating(true);
+      try {
+        const res = await fetch('/api/docker/compose/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            yaml: composeYaml,
+            env: composeEnvExists ? composeEnv : '',
+          }),
+        });
+        if (res.ok) setComposeValidation(await res.json());
+      } catch {
+        /* ignore transient errors while typing */
+      } finally {
+        setComposeValidating(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [composeOpen, composeLoading, composeYaml, composeEnv, composeEnvExists]);
+
+  // Auto-add keys referenced by the compose but absent from .env.
+  useEffect(() => {
+    if (!composeOpen) return;
+    const missing = composeValidation?.missing_env ?? [];
+    if (missing.length === 0) return;
+    setComposeEnvExists(true);
+    setComposeEnv((prev) => addEnvKeys(prev, missing));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeOpen, composeValidation]);
+
   // Automatically add referenced-but-missing keys to the .env with an empty
   // value, so the user only has to fill in the value.
   useEffect(() => {
@@ -370,13 +377,7 @@ export default function App() {
     const missing = validation?.missing_env ?? [];
     if (missing.length === 0) return;
     setCreateEnvExists(true);
-    setCreateEnv((prev) => {
-      const existing = new Set(envKeys(prev));
-      const toAdd = missing.filter((k) => !existing.has(k));
-      if (toAdd.length === 0) return prev;
-      const base = prev.trim().length > 0 ? prev.replace(/\s*$/, '') + '\n' : '';
-      return base + toAdd.map((k) => `${k}=`).join('\n') + '\n';
-    });
+    setCreateEnv((prev) => addEnvKeys(prev, missing));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createOpen, validation]);
 
@@ -384,6 +385,7 @@ export default function App() {
     setComposeOpen(true);
     setComposeLoading(true);
     setComposeMsg(null);
+    setComposeValidation(null);
     setComposeContainerId(id);
     setComposeYaml('');
     setComposeEnv('');
@@ -460,7 +462,18 @@ export default function App() {
         if (data.status === 'applied') setComposeMsg('Appliqué avec succès.');
         loadDocker();
       } else {
-        setComposeMsg(await res.text());
+        const text = await res.text();
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && Array.isArray(parsed.errors)) {
+            setComposeValidation(parsed);
+            setComposeMsg('Compose invalide — corrigez les erreurs signalées.');
+          } else {
+            setComposeMsg(parsed.message || text);
+          }
+        } catch {
+          setComposeMsg(text);
+        }
       }
     } catch (err) {
       setComposeMsg(String(err));
@@ -969,18 +982,7 @@ export default function App() {
                       <Plus className="w-3.5 h-3.5" /> .env
                     </button>
                   )}
-                  {(() => {
-                    const gaps =
-                      (validation?.missing_env?.length ?? 0) + (validation?.empty_env?.length ?? 0);
-                    return gaps > 0 ? (
-                      <span
-                        title={`${gaps} variable(s) sans valeur`}
-                        className="mb-1 ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-orange-500/20 text-orange-300"
-                      >
-                        <AlertCircle className="w-3 h-3" /> {gaps}
-                      </span>
-                    ) : null;
-                  })()}
+                  <EnvGapBadge validation={validation} />
                 </div>
 
                 {createTab === 'compose' ? (
@@ -1037,134 +1039,13 @@ export default function App() {
                 </div>
 
                 {/* Compose validation feedback */}
-                {validating && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2E2A27] bg-[#121110] p-3 text-xs text-stone-400">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
-                    Analyse du YAML…
-                  </div>
-                )}
-                {!validating && validation && (
-                  <div className="mt-3 space-y-2">
-                    {validation.valid ? (                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs text-emerald-300">
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                        <span>
-                          Compose valide
-                          {validation.services.length > 0 &&
-                            ` — service(s) : ${validation.services.join(', ')}`}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-300">
-                        <p className="font-medium mb-1.5 flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4" /> Compose invalide —{' '}
-                          {validation.errors.length} erreur(s)
-                        </p>
-                        <ul className="space-y-1">
-                          {validation.errors.map((e, i) => (
-                            <li key={`err-${i}`} className="flex gap-2">
-                              <span className="font-mono text-[11px] text-red-400/80 shrink-0">
-                                {e.line ? `ligne ${e.line}` : '—'}
-                              </span>
-                              <span>
-                                {e.field && (
-                                  <code className="font-mono text-[11px] text-red-200/90">
-                                    {e.field}
-                                  </code>
-                                )}
-                                {e.field ? ' : ' : ''}
-                                {e.message}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {validation.warnings.length > 0 && (
-                      <div className="rounded-lg border border-orange-500/30 bg-orange-950/20 p-3 text-xs text-orange-200">
-                        <p className="font-medium mb-1.5 flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4" /> {validation.warnings.length}{' '}
-                          avertissement(s)
-                        </p>
-                        <ul className="space-y-1">
-                          {validation.warnings.map((w, i) => (
-                            <li key={`warn-${i}`} className="flex gap-2">
-                              <span className="font-mono text-[11px] text-orange-300/80 shrink-0">
-                                {w.line ? `ligne ${w.line}` : '—'}
-                              </span>
-                              <span>
-                                {w.field && (
-                                  <code className="font-mono text-[11px] text-orange-100/90">
-                                    {w.field}
-                                  </code>
-                                )}
-                                {w.field ? ' : ' : ''}
-                                {w.message}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Missing / empty .env variables: fill values inline */}
-                    {(() => {
-                      const missing = validation.missing_env ?? [];
-                      const empty = validation.empty_env ?? [];
-                      const keys = [...new Set([...missing, ...empty])];
-                      if (keys.length === 0) return null;
-                      const values: Record<string, string> = {};
-                      createEnv.split('\n').forEach((line) => {
-                        const m = line.match(
-                          /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/
-                        );
-                        if (m) values[m[1]] = m[2].trim();
-                      });
-                      return (
-                        <div className="rounded-lg border border-orange-500/30 bg-[#1C1A18]/70 p-3">
-                          <p className="text-xs font-medium text-orange-200 mb-2 flex items-center gap-2">
-                            <Lock className="w-4 h-4" />
-                            Variables requises par le compose ({keys.length})
-                          </p>
-                          <div className="space-y-2">
-                            {keys.map((key) => {
-                              const isMissing = missing.includes(key);
-                              return (
-                                <div key={key} className="flex items-center gap-2">
-                                  <code className="w-44 shrink-0 truncate font-mono text-[11px] text-orange-300">
-                                    {key}
-                                  </code>
-                                  <input
-                                    type={isSensitiveKey(key) ? 'password' : 'text'}
-                                    value={values[key] ?? ''}
-                                    onChange={(e) => {
-                                      setCreateEnvExists(true);
-                                      setCreateEnv((prev) => setEnvValue(prev, key, e.target.value));
-                                    }}
-                                    placeholder="valeur à renseigner…"
-                                    className="flex-1 rounded-md border border-[#2E2A27] bg-[#121110] px-2 py-1 font-mono text-[11px] text-stone-100 placeholder-stone-600 focus:border-orange-500 focus:outline-none"
-                                  />
-                                  <span
-                                    className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${
-                                      isMissing
-                                        ? 'bg-red-500/15 text-red-300'
-                                        : 'bg-orange-500/15 text-orange-300'
-                                    }`}
-                                  >
-                                    {isMissing ? 'absente' : 'valeur manquante'}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <p className="mt-2 text-[11px] text-stone-500">
-                            Les clés sont ajoutées automatiquement au <code className="font-mono">.env</code> ;
-                            renseignez leur valeur ci-dessus (elle est aussi éditable dans l'onglet .env).
-                          </p>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                <ComposeValidationPanel
+                  validation={validation}
+                  validating={validating}
+                  envText={createEnv}
+                  onEnvChange={setCreateEnv}
+                  onEnvUsed={() => setCreateEnvExists(true)}
+                />
 
                 {createResult && (
                   <div
@@ -1298,6 +1179,7 @@ export default function App() {
                           <Plus className="w-3.5 h-3.5" /> .env
                         </button>
                       )}
+                      <EnvGapBadge validation={composeValidation} />
                     </div>
 
                     {composeTab === 'compose' ? (
@@ -1316,6 +1198,14 @@ export default function App() {
                         className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-orange-200 focus:border-orange-500 focus:outline-none resize-none"
                       />
                     )}
+
+                    <ComposeValidationPanel
+                      validation={composeValidation}
+                      validating={composeValidating}
+                      envText={composeEnv}
+                      onEnvChange={setComposeEnv}
+                      onEnvUsed={() => setComposeEnvExists(true)}
+                    />
 
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <p className="text-xs text-stone-500">
@@ -1337,8 +1227,17 @@ export default function App() {
                         </button>
                         <button
                           onClick={applyCompose}
-                          disabled={composeSaving || composeApplying}
-                          title="Enregistrer puis recréer le conteneur (rollback automatique)"
+                          disabled={
+                            composeSaving ||
+                            composeApplying ||
+                            composeValidating ||
+                            (composeValidation !== null && !composeValidation.valid)
+                          }
+                          title={
+                            composeValidation && !composeValidation.valid
+                              ? 'Corrigez les erreurs de validation avant d’appliquer'
+                              : 'Enregistrer puis recréer le conteneur (rollback automatique)'
+                          }
                           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
                         >
                           <Rocket className={`w-4 h-4 ${composeApplying ? 'animate-pulse' : ''}`} />

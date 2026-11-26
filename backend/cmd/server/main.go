@@ -460,6 +460,12 @@ func main() {
 			service = id
 		}
 
+		// Validate before touching the running container.
+		if result := updater.ValidateCompose(req.YAML, req.Env); !result.Valid {
+			writeJSON(w, http.StatusBadRequest, result)
+			return
+		}
+
 		// Persist first so the definition is never lost, even if the apply fails.
 		if err := dbStore.SaveCompose(service, req.YAML); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
