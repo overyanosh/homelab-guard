@@ -50,7 +50,6 @@ export default function App() {
   
   // New state for logs and updates
   const [logsModalOpen, setLogsModalOpen] = useState(false);
-  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
   const [containerLogs, setContainerLogs] = useState('');
   const [checkingUpdates, setCheckingUpdates] = useState<Record<string, boolean>>({});
   const [newerVersions, setNewerVersions] = useState<Set<string>>(new Set());
@@ -102,7 +101,6 @@ export default function App() {
   };
 
   const openLogs = async (id: string) => {
-    setSelectedContainerId(id);
     setLogsModalOpen(true);
     setLoading(true);
     try {
@@ -167,31 +165,31 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex">
-      <aside className="w-64 border-r border-slate-800 bg-slate-900/70 p-4 flex flex-col gap-2">
-        <div className="flex items-center gap-2.5 px-2 py-3 mb-4 border-b border-slate-800">
-          <Shield className="w-6 h-6 text-sky-400" />
-          <span className="font-bold tracking-tight text-lg">Homelab Guard</span>
+    <div className="min-h-screen bg-[#121110] text-stone-100 flex">
+      <aside className="w-64 border-r border-[#2E2A27] bg-[#1C1A18]/70 p-4 flex flex-col gap-2">
+        <div className="flex items-center gap-2.5 px-2 py-3 mb-4 border-b border-[#2E2A27]">
+          <Shield className="w-6 h-6 text-orange-500" />
+          <span className="font-bold tracking-tight text-lg">HOMELAB<span className="text-orange-500"> GUARD</span></span>
         </div>
-        <button onClick={() => setTab('docker')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'docker' ? 'bg-sky-500/15 text-sky-400' : 'text-slate-400 hover:bg-slate-800'}`}>
+        <button onClick={() => setTab('docker')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'docker' ? 'bg-orange-500/15 text-orange-500' : 'text-stone-400 hover:bg-[#2E2A27]'}`}>
           <Box className="w-4 h-4" /> Docker & Swarm
         </button>
-        <button onClick={() => setTab('proxmox')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'proxmox' ? 'bg-sky-500/15 text-sky-400' : 'text-slate-400 hover:bg-slate-800'}`}>
+        <button onClick={() => setTab('proxmox')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'proxmox' ? 'bg-orange-500/15 text-orange-500' : 'text-stone-400 hover:bg-[#2E2A27]'}`}>
           <Server className="w-4 h-4" /> Proxmox VE
         </button>
-        <button onClick={() => setTab('ssh')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'ssh' ? 'bg-sky-500/15 text-sky-400' : 'text-slate-400 hover:bg-slate-800'}`}>
+        <button onClick={() => setTab('ssh')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'ssh' ? 'bg-orange-500/15 text-orange-500' : 'text-stone-400 hover:bg-[#2E2A27]'}`}>
           <TermIcon className="w-4 h-4" /> Bastion SSH
         </button>
-        <button onClick={() => setTab('ai')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'ai' ? 'bg-sky-500/15 text-sky-400' : 'text-slate-400 hover:bg-slate-800'}`}>
+        <button onClick={() => setTab('ai')} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${tab === 'ai' ? 'bg-orange-500/15 text-orange-500' : 'text-stone-400 hover:bg-[#2E2A27]'}`}>
           <Bot className="w-4 h-4" /> Agent IA Ops
         </button>
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto">
         {statusBanner && (
-          <div className="mb-6 rounded-lg border border-sky-500/30 bg-sky-950/40 p-4 text-sm text-sky-200 flex justify-between items-start">
+          <div className="mb-6 rounded-lg border border-orange-500/30 bg-orange-950/40 p-4 text-sm text-orange-200 flex justify-between items-start">
             <pre className="whitespace-pre-wrap font-sans">{statusBanner}</pre>
-            <button onClick={() => setStatusBanner(null)} className="text-xs text-slate-400 hover:text-white ml-4">Fermer</button>
+            <button onClick={() => setStatusBanner(null)} className="text-xs text-stone-400 hover:text-white ml-4">Fermer</button>
           </div>
         )}
 
@@ -199,13 +197,13 @@ export default function App() {
           <section>
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-xl font-semibold">Conteneurs Docker & Podman</h1>
-              <button onClick={loadDocker} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm">
+              <button onClick={loadDocker} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#2E2A27] hover:bg-orange-600 text-sm transition-colors">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualiser
               </button>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/40">
+            <div className="overflow-x-auto rounded-xl border border-[#2E2A27] bg-[#1C1A18]/40">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-slate-800 text-slate-400">
+                <thead className="border-b border-[#2E2A27] text-stone-400">
                   <tr>
                     <th className="p-3">Service</th>
                     <th className="p-3">Image</th>
@@ -217,42 +215,42 @@ export default function App() {
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-[#2E2A27]/60">
                   {containers.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-900/70">
+                    <tr key={c.id} className="hover:bg-[#1C1A18]/70">
                       <td className="p-3 font-medium">{c.names[0]?.replace('/', '')}</td>
-                      <td className="p-3 font-mono text-xs text-slate-400">{c.image}</td>
+                      <td className="p-3 font-mono text-xs text-stone-400">{c.image}</td>
                       <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${c.state === 'running' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-300'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${c.state === 'running' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-[#2E2A27] text-stone-300'}`}>
                           {c.state}
                         </span>
                       </td>
-                      <td className="p-3 text-xs text-slate-300 capitalize">
+                      <td className="p-3 text-xs text-stone-300 capitalize">
                         {c.runtime || 'inconnu'}
                       </td>
-                      <td className="p-3 text-xs text-slate-300">
+                      <td className="p-3 text-xs text-stone-300">
                         {c.guard.enabled ? `${c.guard.update_mode} (${c.guard.test_strategy})` : 'Non géré'}
                       </td>
                       <td className="p-3">
                         {c.newer_version_available || newerVersions.has(c.id) ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/15 text-green-400">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-orange-500/15 text-orange-500">
                             <PackageCheck className="w-3 h-3" /> Nouvelle version
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-500">—</span>
+                          <span className="text-xs text-stone-500">—</span>
                         )}
                       </td>
                       <td className="p-3">
                         <button 
                           onClick={() => openLogs(c.id)}
-                          className="p-1.5 rounded bg-slate-800 hover:bg-sky-600/30 text-slate-400 hover:text-sky-400 transition-colors"
+                          className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors"
                           title="Voir les logs"
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
                       </td>
                       <td className="p-3 text-right">
-                        <button disabled={loading} onClick={() => triggerUpgrade(c.id)} className="px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-500 text-xs font-medium disabled:opacity-50">
+                        <button disabled={loading} onClick={() => triggerUpgrade(c.id)} className="px-2.5 py-1 rounded bg-orange-600 hover:bg-orange-500 text-xs font-medium disabled:opacity-50 transition-colors">
                           Test & Update
                         </button>
                       </td>
@@ -269,20 +267,20 @@ export default function App() {
             <h1 className="text-xl font-semibold mb-6">Cluster Proxmox VE — Nœuds, VM & LXC</h1>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {pveResources.filter((r) => r.type === 'qemu' || r.type === 'lxc').map((vm) => (
-                <div key={vm.id} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 flex flex-col justify-between gap-3">
+                <div key={vm.id} className="rounded-xl border border-[#2E2A27] bg-[#1C1A18]/50 p-4 flex flex-col justify-between gap-3">
                   <div>
                     <div className="flex justify-between items-center">
-                      <span className="font-semibold">{vm.name} <span className="text-xs text-slate-500">#{vm.vmid}</span></span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${vm.status === 'running' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                      <span className="font-semibold">{vm.name} <span className="text-xs text-stone-500">#{vm.vmid}</span></span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${vm.status === 'running' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-orange-500/15 text-orange-500'}`}>
                         {vm.status}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">Nœud : {vm.node} • Type : {vm.type.toUpperCase()}</p>
+                    <p className="text-xs text-stone-400 mt-1">Nœud : {vm.node} • Type : {vm.type.toUpperCase()}</p>
                   </div>
-                  <div className="flex gap-2 pt-2 border-t border-slate-800/80">
-                    <button className="p-1.5 rounded bg-slate-800 hover:bg-emerald-600/30 text-emerald-400" title="Démarrer"><Play className="w-3.5 h-3.5" /></button>
-                    <button className="p-1.5 rounded bg-slate-800 hover:bg-rose-600/30 text-rose-400" title="Arrêter"><Square className="w-3.5 h-3.5" /></button>
-                    <button className="p-1.5 rounded bg-slate-800 hover:bg-sky-600/30 text-sky-400" title="Snapshot"><Camera className="w-3.5 h-3.5" /></button>
+                  <div className="flex gap-2 pt-2 border-t border-[#2E2A27]/80">
+                    <button className="p-1.5 rounded bg-[#2E2A27] hover:bg-emerald-500/30 text-emerald-500 transition-colors" title="Démarrer"><Play className="w-3.5 h-3.5" /></button>
+                    <button className="p-1.5 rounded bg-[#2E2A27] hover:bg-red-500/30 text-red-500 transition-colors" title="Arrêter"><Square className="w-3.5 h-3.5" /></button>
+                    <button className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-orange-500 transition-colors" title="Snapshot"><Camera className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               ))}
@@ -299,7 +297,7 @@ export default function App() {
                   <button
                     key={h.id}
                     onClick={() => setActiveSsh(h)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium ${activeSsh?.id === h.id ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300'}`}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium ${activeSsh?.id === h.id ? 'bg-orange-600 text-white' : 'bg-[#2E2A27] text-stone-300'}`}
                   >
                     <KeyRound className="w-3.5 h-3.5" /> {h.username}@{h.name}
                   </button>
@@ -309,7 +307,7 @@ export default function App() {
             {activeSsh ? (
               <SshTerminal hostId={activeSsh.id} hostLabel={`${activeSsh.username}@${activeSsh.host}`} />
             ) : (
-              <div className="rounded-xl border border-dashed border-slate-800 p-12 text-center text-slate-500 text-sm">
+              <div className="rounded-xl border border-dashed border-[#2E2A27] p-12 text-center text-stone-500 text-sm">
                 Sélectionnez un hôte Linux enregistré pour ouvrir une session terminal chiffrée sans mot de passe.
               </div>
             )}
@@ -324,13 +322,13 @@ export default function App() {
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               placeholder="Ex: Déploie une instance Redis avec persistance AOF et healthcheck TCP..."
-              className="w-full rounded-lg border border-slate-800 bg-slate-900 p-3 text-sm focus:border-sky-500 focus:outline-none"
+              className="w-full rounded-lg border border-[#2E2A27] bg-[#1C1A18] p-3 text-sm focus:border-orange-500 focus:outline-none"
             />
-            <button disabled={loading || !aiPrompt.trim()} onClick={generateCompose} className="mt-3 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm font-medium disabled:opacity-50">
+            <button disabled={loading || !aiPrompt.trim()} onClick={generateCompose} className="mt-3 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors">
               {loading ? 'Génération en cours...' : 'Générer le docker-compose.yml'}
             </button>
             {aiYaml && (
-              <pre className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4 text-xs font-mono text-emerald-300 overflow-x-auto">
+              <pre className="mt-6 rounded-xl border border-[#2E2A27] bg-[#1C1A18] p-4 text-xs font-mono text-emerald-300 overflow-x-auto">
                 {aiYaml}
               </pre>
             )}
@@ -340,21 +338,21 @@ export default function App() {
         {/* Logs Modal */}
         {logsModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-4xl bg-slate-900 rounded-xl border border-slate-700 shadow-2xl">
-              <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                <h3 className="text-lg font-semibold text-white">Logs du conteneur</h3>
-                <button onClick={() => setLogsModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
+            <div className="w-full max-w-4xl bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
+              <div className="flex items-center justify-between p-4 border-b border-[#2E2A27]">
+                <h3 className="text-lg font-semibold text-stone-100">Logs du conteneur</h3>
+                <button onClick={() => setLogsModalOpen(false)} className="text-stone-400 hover:text-white transition-colors">
                   ✕
                 </button>
               </div>
               <div className="p-4 max-h-[60vh] overflow-y-auto">
                 {loading ? (
                   <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="w-6 h-6 animate-spin text-sky-400" />
-                    <span className="ml-2 text-slate-400">Chargement des logs...</span>
+                    <RefreshCw className="w-6 h-6 animate-spin text-orange-500" />
+                    <span className="ml-2 text-stone-400">Chargement des logs...</span>
                   </div>
                 ) : (
-                  <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap bg-slate-950 p-4 rounded-lg overflow-x-auto max-h-[400px]">
+                  <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap bg-[#121110] p-4 rounded-lg overflow-x-auto max-h-[400px]">
                     {containerLogs || 'Aucun log disponible'}
                   </pre>
                 )}

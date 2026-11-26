@@ -19,9 +19,10 @@ export function SshTerminal({ hostId, hostLabel }: SshTerminalProps) {
       fontFamily: 'JetBrains Mono, Fira Code, monospace',
       fontSize: 13,
       theme: {
-        background: '#090d16',
-        foreground: '#e2e8f0',
-        cursor: '#38bdf8',
+        background: '#121110',
+        foreground: '#f5f2ef',
+        cursor: '#f97316',
+        selectionBackground: '#f9731640',
       },
     });
     const fitAddon = new FitAddon();

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Shield silhouette (Warm Gray #292524) -->
+  <path fill="#292524" stroke="#D6D3D1" stroke-width="2" 
+        d="M16 4 L26 8 L26 20 L16 28 L6 20 L6 8 Z"/>
+  
+  <!-- Core orange diamond (#F97316) occupying 50% of center -->
+  <polygon fill="#F97316" 
+           points="16,8 20,12 16,16 12,12"/>
+</svg>
