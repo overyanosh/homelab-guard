@@ -76,6 +76,11 @@ func NewStore(dbPath string, vault *crypto.Vault) (*Store, error) {
 		name TEXT NOT NULL UNIQUE,
 		token_hash TEXT NOT NULL UNIQUE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS compose_files (
+		service TEXT PRIMARY KEY,
+		yaml TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -309,4 +314,24 @@ func (s *Store) DeleteSSHHost(id int64) error {
 		return fmt.Errorf("ssh host not found")
 	}
 	return nil
+}
+
+// GetCompose returns the stored compose definition for a service, if any.
+func (s *Store) GetCompose(service string) (string, error) {
+	var y string
+	err := s.db.QueryRow(`SELECT yaml FROM compose_files WHERE service = ?`, service).Scan(&y)
+	if err != nil {
+		return "", err
+	}
+	return y, nil
+}
+
+// SaveCompose upserts the compose definition for a service.
+func (s *Store) SaveCompose(service, yaml string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO compose_files (service, yaml) VALUES (?, ?)
+		 ON CONFLICT(service) DO UPDATE SET yaml = excluded.yaml, updated_at = CURRENT_TIMESTAMP`,
+		service, yaml,
+	)
+	return err
 }

@@ -1,5 +1,27 @@
 # Changelog - Homelab Guard
 
+## Version 0.4.0 (2026-11-26)
+
+### 🎉 Compose par service + renommage du menu
+
+- Le menu « Docker & Swarm » devient **« Podman, Docker & Swarm »** (idem pour
+  l'en-tête de page et le titre des réglages).
+- Nouvelle colonne **Compose** dans le tableau des conteneurs (juste avant
+  « Mise à jour »), avec une icône ouvrant une modale d'**affichage / édition**
+  du `docker-compose` du service.
+  - Si aucune définition n'est enregistrée, un compose est **généré depuis
+    l'inspection du conteneur** (image, restart, ports, variables
+    d'environnement, volumes).
+  - Les variables sensibles (`*KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*`) sont
+    **masquées** (`***`) dans l'aperçu.
+  - Le compose peut être **modifié puis enregistré** (persisté en SQLite par
+    service).
+
+### 🔧 Backend
+- `GET /api/docker/containers/{id}/compose` (généré ou enregistré)
+- `PUT /api/docker/containers/{id}/compose` (enregistre la définition)
+- Table `compose_files` (service, yaml, updated_at)
+
 ## Version 0.3.0 (2026-11-26)
 
 ### 🎉 Pages de réglages par module

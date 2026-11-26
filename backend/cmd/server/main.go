@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
@@ -245,6 +246,60 @@ func main() {
 		io.Copy(&buf, reader)
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write(buf.Bytes())
+	})
+
+	// --- Per-service Compose (view / edit) ---
+	mux.HandleFunc("GET /api/docker/containers/{id}/compose", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		insp, err := dockerCli.ContainerInspect(context.Background(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		service := strings.TrimPrefix(insp.Name, "/")
+		if service == "" {
+			service = id
+		}
+		yaml, err := dbStore.GetCompose(service)
+		source := "stored"
+		if err != nil || strings.TrimSpace(yaml) == "" {
+			yaml = composeFromInspect(insp)
+			source = "generated"
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"service": service,
+			"yaml":    yaml,
+			"source":  source,
+		})
+	})
+
+	mux.HandleFunc("PUT /api/docker/containers/{id}/compose", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		var req struct {
+			YAML string `json:"yaml"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+		insp, err := dockerCli.ContainerInspect(context.Background(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		service := strings.TrimPrefix(insp.Name, "/")
+		if service == "" {
+			service = id
+		}
+		if err := dbStore.SaveCompose(service, req.YAML); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"service": service,
+			"yaml":    req.YAML,
+			"source":  "stored",
+		})
 	})
 
 	// --- Image Version Check ---
@@ -538,4 +593,102 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// isSensitiveEnv reports whether an environment variable name is likely to hold
+// a secret, so its value is masked when generating a compose preview.
+func isSensitiveEnv(name string) bool {
+	u := strings.ToUpper(name)
+	for _, s := range []string{"KEY", "SECRET", "TOKEN", "PASSWORD", "PASSWD", "PWD"} {
+		if strings.Contains(u, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// composeFromInspect builds a best-effort docker-compose service definition from
+// a container inspection (image, restart policy, ports, env, mounts).
+func composeFromInspect(c dockertypes.ContainerJSON) string {
+	service := strings.TrimPrefix(c.Name, "/")
+	if service == "" {
+		service = c.ID
+		if len(service) > 12 {
+			service = service[:12]
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString("  " + service + ":\n")
+	if c.Config != nil && c.Config.Image != "" {
+		b.WriteString("    image: " + c.Config.Image + "\n")
+	}
+	b.WriteString("    container_name: " + service + "\n")
+	if c.HostConfig != nil && c.HostConfig.RestartPolicy.Name != "" {
+		b.WriteString("    restart: " + string(c.HostConfig.RestartPolicy.Name) + "\n")
+	}
+
+	if c.NetworkSettings != nil && len(c.NetworkSettings.Ports) > 0 {
+		b.WriteString("    ports:\n")
+		for port, bindings := range c.NetworkSettings.Ports {
+			if len(bindings) == 0 {
+				b.WriteString("      - \"" + port.Port() + "\"\n")
+				continue
+			}
+			for _, bnd := range bindings {
+				host := ""
+				if bnd.HostIP != "" && bnd.HostIP != "0.0.0.0" && bnd.HostIP != "::" {
+					host = bnd.HostIP + ":"
+				}
+				if bnd.HostPort != "" {
+					b.WriteString("      - \"" + host + bnd.HostPort + ":" + port.Port() + "\"\n")
+				} else {
+					b.WriteString("      - \"" + port.Port() + "\"\n")
+				}
+			}
+		}
+	}
+
+	if c.Config != nil && len(c.Config.Env) > 0 {
+		var envs []string
+		for _, e := range c.Config.Env {
+			name := e
+			val := ""
+			if i := strings.IndexByte(e, '='); i >= 0 {
+				name = e[:i]
+				val = e[i+1:]
+			}
+			switch name {
+			case "PATH", "HOSTNAME", "HOME", "TERM":
+				continue
+			}
+			if isSensitiveEnv(name) && val != "" {
+				val = "***"
+			}
+			envs = append(envs, "      - \""+name+"="+val+"\"")
+		}
+		if len(envs) > 0 {
+			b.WriteString("    environment:\n")
+			b.WriteString(strings.Join(envs, "\n") + "\n")
+		}
+	}
+
+	if len(c.Mounts) > 0 {
+		var vols []string
+		for _, m := range c.Mounts {
+			switch m.Type {
+			case "bind":
+				vols = append(vols, "      - \""+m.Source+":"+m.Destination+"\"")
+			case "volume":
+				vols = append(vols, "      - \""+m.Name+":"+m.Destination+"\"")
+			}
+		}
+		if len(vols) > 0 {
+			b.WriteString("    volumes:\n")
+			b.WriteString(strings.Join(vols, "\n") + "\n")
+		}
+	}
+
+	return b.String()
 }

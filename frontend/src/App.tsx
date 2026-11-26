@@ -14,6 +14,8 @@ import {
   PackageCheck,
   Settings,
   ArrowLeft,
+  FileCode,
+  Save,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -55,14 +57,14 @@ interface SshHost {
 }
 
 const NAV: { id: Tab; label: string; icon: LucideIcon }[] = [
-  { id: 'docker', label: 'Docker & Swarm', icon: Box },
+  { id: 'docker', label: 'Podman, Docker & Swarm', icon: Box },
   { id: 'proxmox', label: 'Proxmox VE', icon: Server },
   { id: 'ssh', label: 'Bastion SSH', icon: TermIcon },
   { id: 'ai', label: 'Agent IA Ops', icon: Bot },
 ];
 
 const SETTINGS_LABEL: Record<Tab, string> = {
-  docker: 'Docker & Swarm',
+  docker: 'Podman, Docker & Swarm',
   proxmox: 'Proxmox VE',
   ssh: 'Bastion SSH',
   ai: 'Agent IA & Ops',
@@ -85,6 +87,16 @@ export default function App() {
   const [containerLogs, setContainerLogs] = useState('');
   const [checkingUpdates, setCheckingUpdates] = useState<Record<string, boolean>>({});
   const [newerVersions, setNewerVersions] = useState<Set<string>>(new Set());
+
+  // Compose viewer/editor state
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeLoading, setComposeLoading] = useState(false);
+  const [composeSaving, setComposeSaving] = useState(false);
+  const [composeContainerId, setComposeContainerId] = useState('');
+  const [composeService, setComposeService] = useState('');
+  const [composeYaml, setComposeYaml] = useState('');
+  const [composeSource, setComposeSource] = useState<'stored' | 'generated'>('generated');
+  const [composeMsg, setComposeMsg] = useState<string | null>(null);
 
   const loadDocker = async () => {
     const res = await fetch('/api/docker/containers');
@@ -144,6 +156,50 @@ export default function App() {
       console.error('Failed to load logs:', err);
     }
     setLoading(false);
+  };
+
+  const openCompose = async (id: string) => {
+    setComposeOpen(true);
+    setComposeLoading(true);
+    setComposeMsg(null);
+    setComposeContainerId(id);
+    setComposeYaml('');
+    try {
+      const res = await fetch(`/api/docker/containers/${id}/compose`);
+      if (res.ok) {
+        const data = await res.json();
+        setComposeService(data.service);
+        setComposeYaml(data.yaml);
+        setComposeSource(data.source === 'stored' ? 'stored' : 'generated');
+      } else {
+        setComposeMsg(await res.text());
+      }
+    } catch (err) {
+      setComposeMsg(String(err));
+    }
+    setComposeLoading(false);
+  };
+
+  const saveCompose = async () => {
+    if (!composeContainerId) return;
+    setComposeSaving(true);
+    setComposeMsg(null);
+    try {
+      const res = await fetch(`/api/docker/containers/${composeContainerId}/compose`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yaml: composeYaml }),
+      });
+      if (res.ok) {
+        setComposeSource('stored');
+        setComposeMsg('Compose enregistré.');
+      } else {
+        setComposeMsg(await res.text());
+      }
+    } catch (err) {
+      setComposeMsg(String(err));
+    }
+    setComposeSaving(false);
   };
 
   const loadProxmox = async () => {
@@ -281,7 +337,7 @@ export default function App() {
             {tab === 'docker' && (
               <section>
                 <div className="flex justify-between items-center mb-6">
-                  <h1 className="text-xl font-semibold">Conteneurs Docker & Podman</h1>
+                  <h1 className="text-xl font-semibold">Conteneurs Podman, Docker & Swarm</h1>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={loadDocker}
@@ -307,6 +363,7 @@ export default function App() {
                         <th className="p-3">État</th>
                         <th className="p-3">Moteur</th>
                         <th className="p-3">Mode / Test</th>
+                        <th className="p-3">Compose</th>
                         <th className="p-3">Mise à jour</th>
                         <th className="p-3">Logs</th>
                         <th className="p-3 text-right">Actions</th>
@@ -335,6 +392,15 @@ export default function App() {
                             {c.guard.enabled
                               ? `${c.guard.update_mode} (${c.guard.test_strategy})`
                               : 'Non géré'}
+                          </td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => openCompose(c.id)}
+                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors"
+                              title="Afficher / modifier le compose"
+                            >
+                              <FileCode className="w-3.5 h-3.5" />
+                            </button>
                           </td>
                           <td className="p-3">
                             {c.newer_version_available || newerVersions.has(c.id) ? (
@@ -540,6 +606,72 @@ export default function App() {
                   <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap bg-[#121110] p-4 rounded-lg overflow-x-auto max-h-[400px]">
                     {containerLogs || 'Aucun log disponible'}
                   </pre>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Compose Viewer / Editor Modal */}
+        {composeOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-3xl bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
+              <div className="flex items-center justify-between p-4 border-b border-[#2E2A27]">
+                <div className="flex items-center gap-2">
+                  <FileCode className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-lg font-semibold text-stone-100">
+                    Compose — <span className="font-mono text-orange-500">{composeService}</span>
+                  </h3>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] ${
+                      composeSource === 'stored'
+                        ? 'bg-emerald-500/15 text-emerald-500'
+                        : 'bg-[#2E2A27] text-stone-400'
+                    }`}
+                  >
+                    {composeSource === 'stored' ? 'enregistré' : 'généré'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setComposeOpen(false)}
+                  className="text-stone-400 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4">
+                {composeLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin text-orange-500" />
+                    <span className="ml-2 text-stone-400">Chargement du compose...</span>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={composeYaml}
+                      onChange={(e) => setComposeYaml(e.target.value)}
+                      spellCheck={false}
+                      className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
+                    />
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="text-xs text-stone-500">
+                        {composeSource === 'generated'
+                          ? 'Aperçu généré depuis le conteneur. Enregistrez pour conserver vos modifications.'
+                          : 'Définition enregistrée pour ce service.'}
+                      </p>
+                      <div className="flex items-center gap-3">
+                        {composeMsg && <span className="text-xs text-stone-300">{composeMsg}</span>}
+                        <button
+                          onClick={saveCompose}
+                          disabled={composeSaving}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
+                        >
+                          <Save className="w-4 h-4" />
+                          {composeSaving ? 'Enregistrement...' : 'Enregistrer'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
