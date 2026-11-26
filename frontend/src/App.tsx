@@ -24,6 +24,7 @@ import {
   Database,
   Loader2,
   Plug,
+  AlertCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -270,6 +271,20 @@ export default function App() {
     setCreateMsg(null);
     setCreateResult(null);
     setValidation(null);
+  };
+
+  const existingNames = new Set(
+    containers.map((c) => (c.names[0] || '').replace(/^\//, '')).filter(Boolean)
+  );
+  const createNameTaken = createName.trim() !== '' && existingNames.has(createName.trim());
+  const suggestName = (base: string) => {
+    const clean = base.trim() || 'service';
+    if (!existingNames.has(clean)) return clean;
+    for (let i = 2; i < 100; i++) {
+      const candidate = `${clean}-${i}`;
+      if (!existingNames.has(candidate)) return candidate;
+    }
+    return `${clean}-new`;
   };
 
   const changeCreateName = (value: string) => {
@@ -966,6 +981,8 @@ export default function App() {
                 </div>
                 <input
                   autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
                   value={createName}
                   onChange={(e) => changeCreateName(e.target.value)}
                   placeholder="nom-du-conteneur"
@@ -983,6 +1000,21 @@ export default function App() {
               </div>
 
               <div className="p-4">
+                {createNameTaken && (
+                  <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-300">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>
+                      Un conteneur nommé <code className="font-mono">{createName.trim()}</code>{' '}
+                      existe déjà.
+                    </span>
+                    <button
+                      onClick={() => changeCreateName(suggestName(createName.trim()))}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium transition-colors"
+                    >
+                      Utiliser « {suggestName(createName.trim())} »
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-1 mb-3 border-b border-[#2E2A27]">
                   <button
                     onClick={() => setCreateTab('compose')}
@@ -1072,7 +1104,8 @@ export default function App() {
                         !createName.trim() ||
                         validating ||
                         (validation !== null && !validation.valid) ||
-                        ((validation?.services.length ?? 0) > 1 && !createService)
+                        ((validation?.services.length ?? 0) > 1 && !createService) ||
+                        createNameTaken
                       }
                       title={
                         validation && !validation.valid

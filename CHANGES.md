@@ -1,5 +1,38 @@
 # Changelog - Homelab Guard
 
+## Version 0.8.4 (2026-11-27)
+
+### 🎉 Conflits de nom de conteneur détectés avant création
+
+Créer un second conteneur (`tokar-2`) à partir d'un service existant pouvait
+échouer avec le message brut de Podman :
+
+```
+container create: creating container storage: the container name "tokar" is
+already in use by ...
+```
+
+Corrections :
+
+- **Vérification préalable** côté backend : si le nom demandé est déjà utilisé,
+  renvoi immédiat d'un message actionnable avec l'ID fautif :
+  `un conteneur nommé "tokar" existe déjà (id 68673643bb7a) : choisissez un autre
+  nom ou supprimez-le d'abord`.
+- **Interface** : dès que le nom saisi correspond à un conteneur existant, un
+  bandeau rouge l'indique et propose un nom libre en un clic
+  (**« Utiliser « tokar-3 » »**). Le bouton « Créer » est désactivé.
+- `autoComplete="off"` sur le champ nom pour éviter qu'un remplissage automatique
+  du navigateur ne réinjecte un ancien nom (source probable du conflit).
+- **Journalisation** de chaque création :
+  `compose create: name="tokar-2" service="tokar" image="..."` pour diagnostiquer
+  les cas limites.
+
+### ✅ Précision de comportement
+
+Le **nom saisi dans le formulaire est toujours prioritaire** sur un éventuel
+`container_name` déclaré dans le service composé (vérifié : service avec
+`container_name: tokar` créé sous le nom `tokar-3`).
+
 ## Version 0.8.3 (2026-11-27)
 
 ### 🎉 Compose multi-services : choix du service à déployer

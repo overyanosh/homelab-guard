@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"regexp"
 	"sort"
@@ -386,6 +387,22 @@ func (e *Engine) CreateFromCompose(ctx context.Context, name, service, composeDo
 	}
 	if strings.TrimSpace(svc.Image) == "" {
 		return nil, fmt.Errorf("compose definition has no image")
+	}
+
+	log.Printf("compose create: name=%q service=%q image=%q", containerName, service, svc.Image)
+
+	// Fail early with an actionable message when the name is already taken.
+	if existing, err := e.docker.ContainerList(ctx, container.ListOptions{All: true}); err == nil {
+		for _, c := range existing {
+			for _, n := range c.Names {
+				if strings.TrimPrefix(n, "/") == containerName {
+					return nil, fmt.Errorf(
+						"un conteneur nommé %q existe déjà (id %s) : choisissez un autre nom ou supprimez-le d'abord",
+						containerName, c.ID[:12],
+					)
+				}
+			}
+		}
 	}
 
 	// Best-effort pull so a missing image can still be created.
