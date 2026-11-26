@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,13 +30,72 @@ import (
 )
 
 type ContainerSummary struct {
-	ID      string             `json:"id"`
-	Names   []string           `json:"names"`
-	Image   string             `json:"image"`
-	State   string             `json:"state"`
-	Status  string             `json:"status"`
-	Runtime string             `json:"runtime"`
-	Guard   labels.GuardConfig `json:"guard"`
+	ID       string             `json:"id"`
+	Names    []string           `json:"names"`
+	Image    string             `json:"image"`
+	State    string             `json:"state"`
+	Status   string             `json:"status"`
+	Runtime  string             `json:"runtime"`
+	Networks []string           `json:"networks"`
+	Ports    []string           `json:"ports"`
+	Guard    labels.GuardConfig `json:"guard"`
+}
+
+// containerNetworkNames returns the networks a container is attached to. With
+// rootless Podman the Docker-compatible API leaves NetworkSettings.Networks
+// empty, so the network mode (pasta, bridge, host, custom network, ...) is used
+// as the network identifier instead.
+func containerNetworkNames(insp dockertypes.ContainerJSON) []string {
+	names := []string{}
+	if insp.NetworkSettings != nil {
+		for name := range insp.NetworkSettings.Networks {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 && insp.HostConfig != nil {
+		if mode := strings.TrimSpace(string(insp.HostConfig.NetworkMode)); mode != "" {
+			names = append(names, mode)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// containerPortNames returns human-readable port mappings, e.g. "8080:80/tcp"
+// for published ports and "9015/tcp" for merely exposed ones.
+func containerPortNames(insp dockertypes.ContainerJSON) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+
+	if insp.NetworkSettings != nil {
+		for port, bindings := range insp.NetworkSettings.Ports {
+			if len(bindings) == 0 {
+				add(port.Port() + "/" + port.Proto())
+				continue
+			}
+			for _, b := range bindings {
+				if b.HostPort != "" {
+					add(b.HostPort + ":" + port.Port() + "/" + port.Proto())
+					seen[port.Port()+"/"+port.Proto()] = true // published: hide bare form
+				} else {
+					add(port.Port() + "/" + port.Proto())
+				}
+			}
+		}
+	}
+	if insp.Config != nil {
+		for port := range insp.Config.ExposedPorts {
+			add(port.Port() + "/" + port.Proto())
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // New type for update check response
@@ -225,14 +285,22 @@ func main() {
 		}
 		res := make([]ContainerSummary, 0, len(containers))
 		for _, c := range containers {
+			networks := []string{}
+			ports := []string{}
+			if insp, err := dockerCli.ContainerInspect(r.Context(), c.ID); err == nil {
+				networks = containerNetworkNames(insp)
+				ports = containerPortNames(insp)
+			}
 			res = append(res, ContainerSummary{
-				ID:      c.ID[:12],
-				Names:   c.Names,
-				Image:   c.Image,
-				State:   c.State,
-				Status:  c.Status,
-				Runtime: runtimeName,
-				Guard:   labels.ParseDockerLabels(c.Labels),
+				ID:       c.ID[:12],
+				Names:    c.Names,
+				Image:    c.Image,
+				State:    c.State,
+				Status:   c.Status,
+				Runtime:  runtimeName,
+				Networks: networks,
+				Ports:    ports,
+				Guard:    labels.ParseDockerLabels(c.Labels),
 			})
 		}
 		writeJSON(w, http.StatusOK, res)

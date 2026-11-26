@@ -1,5 +1,25 @@
 # Changelog - Homelab Guard
 
+## Version 0.7.1 (2026-11-26)
+
+### 🎉 Réseaux et ports visibles dans la liste des conteneurs
+
+Deux nouvelles colonnes dans le tableau **Podman, Docker & Swarm → Conteneurs** :
+
+- **Réseaux** — nom du réseau si unique ; sinon petite icône réseau avec `…`
+  et une **infobulle au survol** listant tous les réseaux.
+- **Ports** — mapping si unique (ex. `8080:80/tcp`) ; sinon icône avec `…` et
+  infobulle listant tous les ports.
+- Aucun réseau/port → `—`.
+
+#### Backend
+- `GET /api/docker/containers` renvoie désormais `networks` et `ports`.
+- Les réseaux proviennent de `NetworkSettings.Networks` et, lorsque l'API
+  Docker-compatible de Podman les renvoie vides (Podman rootless), du **mode
+  réseau** (`pasta`, `bridge`, `host`, réseau personnalisé).
+- Les ports sont normalisés : ports publiés `hôte:conteneur/proto`, ports
+  seulement exposés `conteneur/proto`, sans doublon.
+
 ## Version 0.7.0 (2026-11-26)
 
 ### 🎉 Création de conteneur depuis un compose (sans IA)

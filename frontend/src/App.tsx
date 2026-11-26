@@ -23,6 +23,7 @@ import {
   Layers,
   Database,
   Loader2,
+  Plug,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -50,7 +51,40 @@ interface ContainerItem {
     test_strategy: string;
   };
   runtime: string;
+  networks?: string[];
+  ports?: string[];
   newer_version_available?: boolean;
+}
+
+// CompactCell shows a single value directly, or an icon with a hover tooltip
+// listing every value when there are several.
+function CompactCell({
+  items,
+  icon: Icon,
+  mono = true,
+}: {
+  items?: string[];
+  icon: LucideIcon;
+  mono?: boolean;
+}) {
+  const list = items ?? [];
+  if (list.length === 0) return <span className="text-xs text-stone-600">—</span>;
+  if (list.length === 1) {
+    return (
+      <span className={`text-xs text-stone-300 ${mono ? 'font-mono' : ''}`} title={list[0]}>
+        {list[0]}
+      </span>
+    );
+  }
+  return (
+    <span
+      title={list.join('\n')}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#2E2A27] text-stone-300 hover:bg-[#3a3531] cursor-help transition-colors"
+    >
+      <Icon className="w-3 h-3 text-orange-400" />
+      <span className="text-[11px] leading-none">…</span>
+    </span>
+  );
 }
 
 interface PveResource {
@@ -554,6 +588,8 @@ export default function App() {
                         <th className="p-3">Image</th>
                         <th className="p-3">État</th>
                         <th className="p-3">Moteur</th>
+                        <th className="p-3">Réseaux</th>
+                        <th className="p-3">Ports</th>
                         <th className="p-3">Mode / Test</th>
                         <th className="p-3">Compose</th>
                         <th className="p-3">Mise à jour</th>
@@ -579,6 +615,12 @@ export default function App() {
                           </td>
                           <td className="p-3 text-xs text-stone-300 capitalize">
                             {c.runtime || 'inconnu'}
+                          </td>
+                          <td className="p-3">
+                            <CompactCell items={c.networks} icon={Network} mono={false} />
+                          </td>
+                          <td className="p-3">
+                            <CompactCell items={c.ports} icon={Plug} />
                           </td>
                           <td className="p-3 text-xs text-stone-300">
                             {c.guard.enabled
