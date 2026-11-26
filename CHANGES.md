@@ -1,5 +1,59 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.0 (2026-11-27)
+
+### 🐛 « Actualiser » inopérant, conteneurs invisibles, « fantômes »
+
+Cause : les réponses JSON n'avaient **aucun en-tête de cache**. Le navigateur
+resservait une liste périmée, d'où :
+- bouton **Actualiser** sans effet visible ;
+- conteneurs créés mais **pas affichés** (« il n'en est rien ») ;
+- noms **déjà pris** par des conteneurs qui n'existaient plus (fantômes).
+
+Correctifs :
+- `Cache-Control: no-store, max-age=0` sur toutes les réponses JSON ;
+- `cache: 'no-store'` sur les requêtes de listes côté frontend.
+
+### ↩️ Retour en arrière : « Nouveau » = **un seul conteneur**
+
+Le bouton **« Nouveau »** crée de nouveau un **conteneur simple** :
+- pas de sélecteur de service, le compose doit déclarer **un seul service** ;
+- si plusieurs services sont présents, la création est refusée avec un message
+  qui renvoie vers **Stacks** ;
+- les variables `.env` manquantes sont toujours ajoutées automatiquement et la
+  validation en direct reste active.
+
+### 🆕 Bouton **« Stacks »** (compose multi-services)
+
+Nouveau bouton à côté de « Nouveau », plus un onglet **Stacks** dans le
+sous-menu Podman/Docker/Swarm.
+
+- **Déployer une stack** : chaque service devient un conteneur nommé
+  `container_name` ou `<stack>-<service>`, étiqueté
+  `guard.stack=<stack>`, `guard.service=<service>` et
+  `com.docker.compose.project/service`.
+- **Redéploiement idempotent** : les conteneurs de la stack sont recréés ; un
+  conteneur portant le même nom mais **hors stack** est signalé sans être touché.
+- **Liste des stacks** : services, état actif/inactif, compteur, boutons
+  « Modifier / Redéployer » et « Arrêter et supprimer ».
+- Compose et `.env` **persistés** en base (`stacks`), donc rechargeables.
+- Validation et saisie des variables `.env` manquantes identiques aux autres
+  modales.
+
+### 🗑 Suppression d'un conteneur depuis l'interface
+
+- Bouton corbeille dans la colonne Actions (avec confirmation) pour nettoyer un
+  conteneur résiduel et libérer son nom.
+- `DELETE /api/docker/containers/{id}` refuse (**409**) la suppression du
+  conteneur Homelab Guard lui-même.
+
+### 🔧 Backend
+- `GET/POST /api/docker/stacks`, `GET /api/docker/stacks/{name}`,
+  `POST /api/docker/stacks/{name}/down`, `DELETE /api/docker/stacks/{name}`
+- `DELETE /api/docker/containers/{id}`
+- `updater.DeployStack`, `updater.RemoveStack`, `updater.ParseComposeServices`
+- Table `stacks`
+
 ## Version 0.8.4 (2026-11-27)
 
 ### 🎉 Conflits de nom de conteneur détectés avant création

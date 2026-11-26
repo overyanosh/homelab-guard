@@ -25,6 +25,7 @@ import {
   Loader2,
   Plug,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -41,9 +42,10 @@ import {
   addEnvKeys,
   type ValidationResult,
 } from './components/ComposeValidation';
+import { StacksPanel, StackEditor } from './components/Stacks';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
-type DockerTab = 'containers' | 'networks' | 'images' | 'volumes';
+type DockerTab = 'containers' | 'stacks' | 'networks' | 'images' | 'volumes';
 
 interface ContainerItem {
   id: string;
@@ -130,6 +132,8 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<Tab | null>(null);
   const [dockerTab, setDockerTab] = useState<DockerTab>('containers');
   const [resourceRefresh, setResourceRefresh] = useState(0);
+  const [stackEditorOpen, setStackEditorOpen] = useState(false);
+  const [stackEditing, setStackEditing] = useState<string | null>(null);
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [pveResources, setPveResources] = useState<PveResource[]>([]);
   const [sshHosts, setSshHosts] = useState<SshHost[]>([]);
@@ -176,7 +180,6 @@ export default function App() {
   const [createEnvExists, setCreateEnvExists] = useState(false);
   const [createTab, setCreateTab] = useState<'compose' | 'env'>('compose');
   const [createTouched, setCreateTouched] = useState(false);
-  const [createService, setCreateService] = useState('');
   const [creating, setCreating] = useState(false);
   const [createMsg, setCreateMsg] = useState<string | null>(null);
   const [createResult, setCreateResult] = useState<{
@@ -192,7 +195,7 @@ export default function App() {
   const [validating, setValidating] = useState(false);
 
   const loadDocker = async () => {
-    const res = await fetch('/api/docker/containers');
+    const res = await fetch('/api/docker/containers', { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       setContainers(data);
@@ -267,7 +270,6 @@ export default function App() {
     setCreateEnvExists(false);
     setCreateTab('compose');
     setCreateTouched(false);
-    setCreateService('');
     setCreateMsg(null);
     setCreateResult(null);
     setValidation(null);
@@ -305,7 +307,6 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: createName.trim(),
-          service: createService,
           yaml: createYaml,
           env: createEnvExists ? createEnv : '',
         }),
@@ -354,18 +355,6 @@ export default function App() {
     }, 350);
     return () => clearTimeout(timer);
   }, [createOpen, createYaml, createEnv, createEnvExists]);
-
-  // Pick a sensible default service: by name, else the only one.
-  useEffect(() => {
-    const services = validation?.services ?? [];
-    if (services.length === 0) return;
-    setCreateService((prev) => {
-      if (prev && services.includes(prev)) return prev;
-      const byName = services.find((s) => s === createName.trim());
-      if (byName) return byName;
-      return services.length === 1 ? services[0] : '';
-    });
-  }, [validation, createName]);
 
   useEffect(() => {
     const services = composeValidation?.services ?? [];
@@ -552,6 +541,16 @@ export default function App() {
     loadSshHosts();
   }, []);
 
+  const deleteContainer = async (id: string, name: string) => {
+    if (!confirm(`Supprimer le conteneur « ${name} » ? Cette action est irréversible.`)) return;
+    const res = await fetch(`/api/docker/containers/${id}?force=true`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert(await res.text());
+      return;
+    }
+    loadDocker();
+  };
+
   const triggerUpgrade = async (id: string) => {
     setLoading(true);
     setStatusBanner('Exécution du pipeline Sandbox & Non-Régression...');
@@ -669,8 +668,18 @@ export default function App() {
                   <h1 className="text-xl font-semibold">Podman, Docker & Swarm</h1>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => {
+                        setStackEditing(null);
+                        setStackEditorOpen(true);
+                      }}
+                      title="Déployer un compose multi-services (stack)"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-orange-500/60 text-orange-400 hover:bg-orange-500/15 text-sm font-medium transition-colors"
+                    >
+                      <Layers className="w-4 h-4" /> Stacks
+                    </button>
+                    <button
                       onClick={openCreate}
-                      title="Créer un conteneur à partir d'un compose (sans IA)"
+                      title="Créer un conteneur simple à partir d'un compose (sans IA)"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium transition-colors"
                     >
                       <Plus className="w-4 h-4" /> Nouveau
@@ -698,6 +707,7 @@ export default function App() {
                   {(
                     [
                       { id: 'containers', label: 'Conteneurs', icon: Box },
+                      { id: 'stacks', label: 'Stacks', icon: Layers },
                       { id: 'networks', label: 'Réseaux', icon: Network },
                       { id: 'images', label: 'Images', icon: Layers },
                       { id: 'volumes', label: 'Volumes', icon: Database },
@@ -721,6 +731,15 @@ export default function App() {
                   <DiskUsageBar refreshKey={resourceRefresh} />
                 )}
 
+                {dockerTab === 'stacks' && (
+                  <StacksPanel
+                    refreshKey={resourceRefresh}
+                    onEdit={(stackName) => {
+                      setStackEditing(stackName);
+                      setStackEditorOpen(true);
+                    }}
+                  />
+                )}
                 {dockerTab === 'networks' && (
                   <NetworksPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
                 )}
@@ -807,13 +826,24 @@ export default function App() {
                             </button>
                           </td>
                           <td className="p-3 text-right">
-                            <button
-                              disabled={loading}
-                              onClick={() => triggerUpgrade(c.id)}
-                              className="px-2.5 py-1 rounded bg-orange-600 hover:bg-orange-500 text-xs font-medium disabled:opacity-50 transition-colors"
-                            >
-                              Test & Update
-                            </button>
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                disabled={loading}
+                                onClick={() => triggerUpgrade(c.id)}
+                                className="px-2.5 py-1 rounded bg-orange-600 hover:bg-orange-500 text-xs font-medium disabled:opacity-50 transition-colors"
+                              >
+                                Test & Update
+                              </button>
+                              <button
+                                onClick={() =>
+                                  deleteContainer(c.id, (c.names[0] || '').replace(/^\//, ''))
+                                }
+                                title="Supprimer le conteneur"
+                                className="p-1.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -970,6 +1000,16 @@ export default function App() {
           </>
         )}
 
+        <StackEditor
+          open={stackEditorOpen}
+          initialName={stackEditing}
+          onClose={() => setStackEditorOpen(false)}
+          onDeployed={() => {
+            loadDocker();
+            setResourceRefresh((v) => v + 1);
+          }}
+        />
+
         {/* New Container Modal (compose without AI) */}
         {createOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -1050,23 +1090,6 @@ export default function App() {
                     </button>
                   )}
                   <EnvGapBadge validation={validation} />
-                  {(validation?.services.length ?? 0) > 1 && (
-                    <div className="ml-auto flex items-center gap-2 mb-1">
-                      <span className="text-[11px] text-stone-500">Service</span>
-                      <select
-                        value={createService}
-                        onChange={(e) => setCreateService(e.target.value)}
-                        className="rounded-md border border-[#2E2A27] bg-[#121110] px-2 py-1 font-mono text-xs text-orange-300 focus:border-orange-500 focus:outline-none"
-                      >
-                        <option value="">— sélectionner —</option>
-                        {validation?.services.map((svc) => (
-                          <option key={svc} value={svc}>
-                            {svc}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
 
                 {createTab === 'compose' ? (
@@ -1104,7 +1127,7 @@ export default function App() {
                         !createName.trim() ||
                         validating ||
                         (validation !== null && !validation.valid) ||
-                        ((validation?.services.length ?? 0) > 1 && !createService) ||
+                        (validation?.services.length ?? 0) > 1 ||
                         createNameTaken
                       }
                       title={
@@ -1123,6 +1146,27 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {(validation?.services.length ?? 0) > 1 && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-950/20 p-3 text-xs text-orange-200">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>
+                      Ce compose déclare {validation?.services.length} services. La création simple
+                      n'accepte qu'un seul conteneur : utilisez le bouton{' '}
+                      <button
+                        onClick={() => {
+                          setCreateOpen(false);
+                          setStackEditing(null);
+                          setStackEditorOpen(true);
+                        }}
+                        className="font-medium underline hover:text-orange-100"
+                      >
+                        Stacks
+                      </button>{' '}
+                      pour les déployer ensemble.
+                    </span>
+                  </div>
+                )}
 
                 {/* Compose validation feedback */}
                 <ComposeValidationPanel

@@ -134,6 +134,9 @@ func main() {
 	// Networks, images, volumes and disk-usage management.
 	registerResourceRoutes(mux, dockerCli)
 
+	// Multi-service compose stacks.
+	registerStackRoutes(mux, dockerCli, dbStore, updateEngine)
+
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "homelab-guard"})
 	})
@@ -394,6 +397,30 @@ func main() {
 		})
 	})
 
+	// --- Remove a container (cannot remove Homelab Guard itself) ---
+	mux.HandleFunc("DELETE /api/docker/containers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		insp, err := dockerCli.ContainerInspect(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if self, err := os.Hostname(); err == nil && self != "" && strings.HasPrefix(insp.ID, self) {
+			http.Error(w, "impossible de supprimer le conteneur Homelab Guard lui-même", http.StatusConflict)
+			return
+		}
+		force := r.URL.Query().Get("force") == "true"
+		if force {
+			timeout := 10
+			_ = dockerCli.ContainerStop(r.Context(), id, container.StopOptions{Timeout: &timeout})
+		}
+		if err := dockerCli.ContainerRemove(r.Context(), id, container.RemoveOptions{Force: force}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// --- Compose validation (used by the non-AI container creation form) ---
 	mux.HandleFunc("POST /api/docker/compose/validate", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -427,9 +454,14 @@ func main() {
 		if result := updater.ValidateCompose(req.YAML, req.Env); !result.Valid {
 			writeJSON(w, http.StatusBadRequest, result)
 			return
+		} else if len(result.Services) > 1 {
+			http.Error(w,
+				"la création simple n'accepte qu'un seul service — utilisez « Stacks » pour déployer plusieurs services",
+				http.StatusBadRequest)
+			return
 		}
 
-		result, err := updateEngine.CreateFromCompose(r.Context(), name, strings.TrimSpace(req.Service), req.YAML, req.Env)
+		result, err := updateEngine.CreateFromCompose(r.Context(), name, "", req.YAML, req.Env)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -778,6 +810,9 @@ func getPVEClient(s *store.Store, rawID string) (*proxmox.Client, error) {
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
+	// Live operational data must never be served from the browser cache: it made
+	// the "Actualiser" button appear broken and newly created containers invisible.
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
 }

@@ -465,6 +465,182 @@ func validContainerName(name string) bool {
 	return containerNameRe.MatchString(name)
 }
 
+// StackServiceResult reports the outcome for one service of a stack.
+type StackServiceResult struct {
+	Service       string `json:"service"`
+	ContainerName string `json:"container_name"`
+	Status        string `json:"status"` // created | updated | failed
+	Message       string `json:"message,omitempty"`
+	Logs          string `json:"logs,omitempty"`
+}
+
+// ParseComposeServices parses every service of a compose document.
+func ParseComposeServices(doc string, vars map[string]string) ([]*ComposeService, error) {
+	var parsed struct {
+		Services map[string]map[string]any `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte(doc), &parsed); err != nil {
+		return nil, fmt.Errorf("invalid compose YAML: %w", err)
+	}
+	if len(parsed.Services) == 0 {
+		return nil, fmt.Errorf("compose file declares no services")
+	}
+	names := make([]string, 0, len(parsed.Services))
+	for n := range parsed.Services {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	out := make([]*ComposeService, 0, len(names))
+	for _, name := range names {
+		svc, err := ParseComposeService(doc, name, vars)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, svc)
+	}
+	return out, nil
+}
+
+// DeployStack creates (or recreates) one container per service of a compose
+// document. Containers are labelled with guard.stack=<name> so the stack can be
+// listed and torn down later.
+func (e *Engine) DeployStack(ctx context.Context, stackName, composeDoc, dotEnv string) ([]StackServiceResult, error) {
+	stackName = strings.TrimSpace(stackName)
+	if !validContainerName(stackName) {
+		return nil, fmt.Errorf("invalid stack name %q (allowed: letters, digits, '_', '.', '-')", stackName)
+	}
+	vars := ParseDotEnv(dotEnv)
+	services, err := ParseComposeServices(composeDoc, vars)
+	if err != nil {
+		return nil, err
+	}
+
+	existing := map[string]dockerTypes.Container{}
+	if list, err := e.docker.ContainerList(ctx, container.ListOptions{All: true}); err == nil {
+		for _, c := range list {
+			for _, n := range c.Names {
+				existing[strings.TrimPrefix(n, "/")] = c
+			}
+		}
+	}
+
+	results := make([]StackServiceResult, 0, len(services))
+	for _, svc := range services {
+		res := StackServiceResult{Service: svc.Service}
+		containerName := strings.TrimSpace(svc.ContainerName)
+		if containerName == "" {
+			containerName = fmt.Sprintf("%s-%s", stackName, svc.Service)
+		}
+		res.ContainerName = containerName
+
+		if !validContainerName(containerName) {
+			res.Status = "failed"
+			res.Message = "nom de conteneur invalide"
+			results = append(results, res)
+			continue
+		}
+		if strings.TrimSpace(svc.Image) == "" {
+			res.Status = "failed"
+			res.Message = "image requise"
+			results = append(results, res)
+			continue
+		}
+
+		// Recreate only containers owned by this stack.
+		if c, ok := existing[containerName]; ok {
+			if c.Labels["guard.stack"] != stackName {
+				res.Status = "failed"
+				res.Message = fmt.Sprintf("le nom %q est déjà utilisé par un conteneur hors stack", containerName)
+				results = append(results, res)
+				continue
+			}
+			force := true
+			_ = e.docker.ContainerRemove(context.Background(), c.ID, container.RemoveOptions{Force: force})
+			res.Status = "updated"
+		} else {
+			res.Status = "created"
+		}
+
+		pullCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		if rc, err := e.docker.ImagePull(pullCtx, svc.Image, image.PullOptions{}); err == nil {
+			_, _ = io.Copy(io.Discard, rc)
+			_ = rc.Close()
+		}
+		cancel()
+
+		if svc.Labels == nil {
+			svc.Labels = map[string]string{}
+		}
+		svc.Labels["guard.stack"] = stackName
+		svc.Labels["guard.service"] = svc.Service
+		svc.Labels["com.docker.compose.project"] = stackName
+		svc.Labels["com.docker.compose.service"] = svc.Service
+		svc.ContainerName = containerName
+
+		cfg, hc, netCfg, err := buildConfig(dockerTypes.ContainerJSON{}, svc, svc.Image)
+		if err != nil {
+			res.Status = "failed"
+			res.Message = err.Error()
+			results = append(results, res)
+			continue
+		}
+		cfg.Hostname = ""
+
+		created, err := e.docker.ContainerCreate(ctx, cfg, hc, netCfg, nil, containerName)
+		if err != nil {
+			res.Status = "failed"
+			res.Message = err.Error()
+			results = append(results, res)
+			continue
+		}
+		if err := e.docker.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+			logs := e.collectContainerLogs(ctx, created.ID)
+			force := true
+			_ = e.docker.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: force})
+			res.Status = "failed"
+			res.Message = err.Error()
+			res.Logs = logs
+			results = append(results, res)
+			continue
+		}
+		if reason := e.waitUntilHealthy(ctx, created.ID, svc.Environment); reason != "" {
+			logs := e.collectContainerLogs(ctx, created.ID)
+			res.Status = "failed"
+			res.Message = reason
+			res.Logs = logs
+			results = append(results, res)
+			continue
+		}
+		results = append(results, res)
+	}
+
+	return results, nil
+}
+
+// RemoveStack stops and removes every container carrying guard.stack=<name>.
+func (e *Engine) RemoveStack(ctx context.Context, stackName string) ([]string, error) {
+	list, err := e.docker.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+	removed := []string{}
+	force := true
+	timeout := 10
+	for _, c := range list {
+		if c.Labels["guard.stack"] != stackName {
+			continue
+		}
+		name := strings.TrimPrefix(c.Names[0], "/")
+		_ = e.docker.ContainerStop(ctx, c.ID, container.StopOptions{Timeout: &timeout})
+		if err := e.docker.ContainerRemove(context.Background(), c.ID, container.RemoveOptions{Force: force}); err != nil {
+			return removed, err
+		}
+		removed = append(removed, name)
+	}
+	return removed, nil
+}
+
 // buildConfig derives Config/HostConfig from the inspected container, overridden
 // by the compose service fields.
 func buildConfig(insp dockerTypes.ContainerJSON, svc *ComposeService, imageRef string) (*container.Config, *container.HostConfig, *network.NetworkingConfig, error) {

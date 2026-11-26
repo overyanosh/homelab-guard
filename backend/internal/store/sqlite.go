@@ -87,6 +87,12 @@ func NewStore(dbPath string, vault *crypto.Vault) (*Store, error) {
 		service TEXT PRIMARY KEY,
 		env TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS stacks (
+		name TEXT PRIMARY KEY,
+		yaml TEXT NOT NULL,
+		env TEXT NOT NULL DEFAULT '',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -363,5 +369,27 @@ func (s *Store) SaveComposeEnv(service, env string) error {
 		 ON CONFLICT(service) DO UPDATE SET env = excluded.env, updated_at = CURRENT_TIMESTAMP`,
 		service, env,
 	)
+	return err
+}
+
+// SaveStack upserts a stack definition.
+func (s *Store) SaveStack(name, yamlDoc, env string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO stacks (name, yaml, env) VALUES (?, ?, ?)
+		 ON CONFLICT(name) DO UPDATE SET yaml = excluded.yaml, env = excluded.env, updated_at = CURRENT_TIMESTAMP`,
+		name, yamlDoc, env,
+	)
+	return err
+}
+
+// GetStack returns the stored definition of a stack.
+func (s *Store) GetStack(name string) (yamlDoc string, env string, err error) {
+	err = s.db.QueryRow(`SELECT yaml, env FROM stacks WHERE name = ?`, name).Scan(&yamlDoc, &env)
+	return yamlDoc, env, err
+}
+
+// DeleteStack removes a stored stack definition.
+func (s *Store) DeleteStack(name string) error {
+	_, err := s.db.Exec(`DELETE FROM stacks WHERE name = ?`, name)
 	return err
 }
