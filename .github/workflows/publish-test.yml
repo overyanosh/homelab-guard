@@ -1,0 +1,88 @@
+name: Publish test (vX.1)
+
+# Branche de test / pré-release.
+# Ne se déclenche QUE sur la branche "Test" (ou manuellement).
+# Versionnement : v0.1.<build>  → tags d'image : test, 0.1, 0.1.<build>
+
+on:
+  push:
+    branches: [Test]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+concurrency:
+  group: publish-test
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.mod
+
+      - name: Run Go tests & vet
+        working-directory: backend
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Compute version
+        id: ver
+        run: |
+          version="0.1.${GITHUB_RUN_NUMBER}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Publishing v${version} (test)"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push server (test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}:test
+            ${{ env.REGISTRY }}/${{ github.repository }}:0.1
+            ${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.ver.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=server-test
+          cache-to: type=gha,mode=max,scope=server-test
+
+      - name: Build & push agent (test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}-agent:test
+            ${{ env.REGISTRY }}/${{ github.repository }}-agent:0.1
+            ${{ env.REGISTRY }}/${{ github.repository }}-agent:${{ steps.ver.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=agent-test
+          cache-to: type=gha,mode=max,scope=agent-test

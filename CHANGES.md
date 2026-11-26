@@ -1,5 +1,26 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.2 (2026-11-27)
+
+### 🔧 CI/CD : deux workflows, deux branches (plus de runs sur `main`)
+
+L'unique workflow `release.yml` se déclenchait sur chaque push `main`, sur les
+tags et sur les pull requests — trop de runs pour rien.
+
+| Branche  | Rôle                    | Versionnement  | Workflow             |
+|----------|-------------------------|----------------|----------------------|
+| `main`   | compilation **locale**  | `vX.X.1`       | ❌ **aucun**         |
+| `Test`   | tests / pré-release     | `vX.1.<build>` | `publish-test.yml`   |
+| `latest` | version **stable**      | `v1.<build>`   | `publish-latest.yml` |
+
+- `publish-test.yml` → `:test`, `:0.1`, `:0.1.<run>` (+ agent).
+- `publish-latest.yml` → `:latest`, `:1`, `:1.<run>` (+ agent).
+- Plus de déclenchement sur tags ni sur pull requests ; `concurrency` annule le
+  run précédent de la même branche.
+- Caches de build séparés par branche.
+- `release.yml` supprimé.
+- Documentation : `docs/BRANCHES.md`.
+
 ## Version 0.9.1 (2026-11-27)
 
 ### 🏷 Labels (et commande) inclus dans le compose généré
