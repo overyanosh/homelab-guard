@@ -450,7 +450,9 @@ export default function App() {
                   ))}
                 </nav>
 
-                <DiskUsageBar refreshKey={resourceRefresh} />
+                {dockerTab !== 'containers' && dockerTab !== 'networks' && (
+                  <DiskUsageBar refreshKey={resourceRefresh} />
+                )}
 
                 {dockerTab === 'networks' && (
                   <NetworksPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
