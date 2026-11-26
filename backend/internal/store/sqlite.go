@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
@@ -80,6 +81,11 @@ func NewStore(dbPath string, vault *crypto.Vault) (*Store, error) {
 	CREATE TABLE IF NOT EXISTS compose_files (
 		service TEXT PRIMARY KEY,
 		yaml TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS compose_env (
+		service TEXT PRIMARY KEY,
+		env TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
@@ -332,6 +338,30 @@ func (s *Store) SaveCompose(service, yaml string) error {
 		`INSERT INTO compose_files (service, yaml) VALUES (?, ?)
 		 ON CONFLICT(service) DO UPDATE SET yaml = excluded.yaml, updated_at = CURRENT_TIMESTAMP`,
 		service, yaml,
+	)
+	return err
+}
+
+// GetComposeEnv returns the stored .env for a service, if any.
+func (s *Store) GetComposeEnv(service string) (string, error) {
+	var e string
+	err := s.db.QueryRow(`SELECT env FROM compose_env WHERE service = ?`, service).Scan(&e)
+	if err != nil {
+		return "", err
+	}
+	return e, nil
+}
+
+// SaveComposeEnv upserts the .env for a service. An empty value removes it.
+func (s *Store) SaveComposeEnv(service, env string) error {
+	if strings.TrimSpace(env) == "" {
+		_, err := s.db.Exec(`DELETE FROM compose_env WHERE service = ?`, service)
+		return err
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO compose_env (service, env) VALUES (?, ?)
+		 ON CONFLICT(service) DO UPDATE SET env = excluded.env, updated_at = CURRENT_TIMESTAMP`,
+		service, env,
 	)
 	return err
 }

@@ -1,5 +1,46 @@
 # Changelog - Homelab Guard
 
+## Version 0.5.0 (2026-11-26)
+
+### 🎉 « Enregistrer et Appliquer » dans l'éditeur de compose
+
+La modale Compose dispose maintenant de deux actions :
+
+- **Enregistrer** — persiste `docker-compose.yml` et `.env` (inchangé).
+- **Enregistrer et Appliquer** — enregistre **puis recrée le conteneur** à partir
+  de la définition éditée, avec **rollback automatique**.
+
+#### Déroulé de l'application
+1. Enregistrement de la définition (jamais perdue, même si l'application échoue).
+2. Pull best-effort de l'image (ignore les échecs réseau).
+3. Le conteneur actuel est **renommé en sauvegarde** (`<nom>__guard_backup_<ts>`)
+   puis arrêté.
+4. Création/démarrage du nouveau conteneur avec la config du compose.
+5. Attente jusqu'à 40 s : le conteneur doit rester **running** et devenir
+   **healthy** s'il déclare un healthcheck.
+6. **Succès** → la sauvegarde est supprimée.
+   **Échec** (création, démarrage, sortie non nulle, unhealthy) → le nouveau
+   conteneur est supprimé, la sauvegarde est renommée et redémarrée, et les logs
+   du conteneur en échec sont renvoyés avec un diagnostic IA.
+
+#### Champs du compose pris en charge
+`image`, `container_name`, `restart`, `ports` (court et long), `volumes`,
+`environment` (liste et map), `labels`, `command`, `network_mode`, avec
+**substitution `${VAR}` / `${VAR:-default}`** depuis l'onglet `.env`.
+
+#### Sécurité
+- **Refus de recréer le conteneur Homelab Guard lui-même** (il sert la requête) :
+  HTTP 400 avec message explicite — l'application doit venir d'un agent distant.
+- Le diagnostic IA renvoie désormais le **statut HTTP et le corps** en cas
+  d'erreur du worker (au lieu de « Failed to parse AI diagnosis »).
+- Correctif : les champs cgroup v1 renvoyés par Podman (`MemorySwappiness`,
+  `OomKillDisable`) sont retirés lors de la recréation, sinon crun échoue
+  (`cannot set memory swappiness with cgroupv2`).
+
+### 🔧 Backend
+- `POST /api/docker/containers/{id}/compose/apply`
+- Nouveau module `internal/updater/compose.go` (parsing YAML + moteur d'apply)
+
 ## Version 0.4.0 (2026-11-26)
 
 ### 🎉 Compose par service + renommage du menu

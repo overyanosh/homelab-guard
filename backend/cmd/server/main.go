@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -266,10 +267,18 @@ func main() {
 			yaml = composeFromInspect(insp)
 			source = "generated"
 		}
-		writeJSON(w, http.StatusOK, map[string]string{
-			"service": service,
-			"yaml":    yaml,
-			"source":  source,
+		env, envErr := dbStore.GetComposeEnv(service)
+		if envErr != nil || strings.TrimSpace(env) == "" {
+			if detected := detectComposeEnv(insp); detected != "" {
+				env = detected
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"service":    service,
+			"yaml":       yaml,
+			"source":     source,
+			"env":        env,
+			"env_exists": strings.TrimSpace(env) != "",
 		})
 	})
 
@@ -277,6 +286,7 @@ func main() {
 		id := r.PathValue("id")
 		var req struct {
 			YAML string `json:"yaml"`
+			Env  string `json:"env"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
@@ -295,11 +305,56 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{
-			"service": service,
-			"yaml":    req.YAML,
-			"source":  "stored",
+		if err := dbStore.SaveComposeEnv(service, req.Env); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"service":    service,
+			"yaml":       req.YAML,
+			"source":     "stored",
+			"env":        req.Env,
+			"env_exists": strings.TrimSpace(req.Env) != "",
 		})
+	})
+
+	// --- Save & apply: recreate the container from the compose definition ---
+	mux.HandleFunc("POST /api/docker/containers/{id}/compose/apply", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		var req struct {
+			YAML string `json:"yaml"`
+			Env  string `json:"env"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+		insp, err := dockerCli.ContainerInspect(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		service := strings.TrimPrefix(insp.Name, "/")
+		if service == "" {
+			service = id
+		}
+
+		// Persist first so the definition is never lost, even if the apply fails.
+		if err := dbStore.SaveCompose(service, req.YAML); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := dbStore.SaveComposeEnv(service, req.Env); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		result, err := updateEngine.ApplyCompose(r.Context(), id, service, req.YAML, req.Env)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	})
 
 	// --- Image Version Check ---
@@ -605,6 +660,29 @@ func isSensitiveEnv(name string) bool {
 		}
 	}
 	return false
+}
+
+// detectComposeEnv tries to read a .env file sitting next to a compose project's
+// config file, based on the container's compose labels. Returns "" when not found.
+func detectComposeEnv(c dockertypes.ContainerJSON) string {
+	if c.Config == nil || c.Config.Labels == nil {
+		return ""
+	}
+	dir := c.Config.Labels["com.docker.compose.project.working_dir"]
+	if dir == "" {
+		if cf := c.Config.Labels["com.docker.compose.project.config_files"]; cf != "" {
+			first := strings.Split(cf, ",")[0]
+			dir = filepath.Dir(first)
+		}
+	}
+	if dir == "" {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(dir, ".env"))
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // composeFromInspect builds a best-effort docker-compose service definition from

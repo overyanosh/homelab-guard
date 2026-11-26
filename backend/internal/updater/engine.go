@@ -250,11 +250,23 @@ func (e *Engine) requestAIDiagnosis(serviceName, aiContext, logs string) string 
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusOK {
+		snippet := strings.TrimSpace(string(body))
+		if len(snippet) > 240 {
+			snippet = snippet[:240] + "…"
+		}
+		return fmt.Sprintf("AI Worker returned HTTP %d: %s", resp.StatusCode, snippet)
+	}
+
 	var parsed struct {
 		Analysis string `json:"analysis"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return "Failed to parse AI diagnosis"
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "AI Worker returned an unexpected response"
+	}
+	if strings.TrimSpace(parsed.Analysis) == "" {
+		return "AI Worker returned an empty diagnosis"
 	}
 	return parsed.Analysis
 }

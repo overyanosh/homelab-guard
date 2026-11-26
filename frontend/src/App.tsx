@@ -15,6 +15,9 @@ import {
   Settings,
   ArrowLeft,
   FileCode,
+  FileText,
+  Plus,
+  Rocket,
   Save,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -95,8 +98,18 @@ export default function App() {
   const [composeContainerId, setComposeContainerId] = useState('');
   const [composeService, setComposeService] = useState('');
   const [composeYaml, setComposeYaml] = useState('');
+  const [composeEnv, setComposeEnv] = useState('');
+  const [composeEnvExists, setComposeEnvExists] = useState(false);
+  const [composeTab, setComposeTab] = useState<'compose' | 'env'>('compose');
   const [composeSource, setComposeSource] = useState<'stored' | 'generated'>('generated');
   const [composeMsg, setComposeMsg] = useState<string | null>(null);
+  const [composeApplying, setComposeApplying] = useState(false);
+  const [composeApplyResult, setComposeApplyResult] = useState<{
+    status: string;
+    message?: string;
+    logs?: string;
+    ai_diagnosis?: string;
+  } | null>(null);
 
   const loadDocker = async () => {
     const res = await fetch('/api/docker/containers');
@@ -164,12 +177,18 @@ export default function App() {
     setComposeMsg(null);
     setComposeContainerId(id);
     setComposeYaml('');
+    setComposeEnv('');
+    setComposeEnvExists(false);
+    setComposeTab('compose');
+    setComposeApplyResult(null);
     try {
       const res = await fetch(`/api/docker/containers/${id}/compose`);
       if (res.ok) {
         const data = await res.json();
         setComposeService(data.service);
         setComposeYaml(data.yaml);
+        setComposeEnv(data.env || '');
+        setComposeEnvExists(Boolean(data.env_exists));
         setComposeSource(data.source === 'stored' ? 'stored' : 'generated');
       } else {
         setComposeMsg(await res.text());
@@ -188,11 +207,14 @@ export default function App() {
       const res = await fetch(`/api/docker/containers/${composeContainerId}/compose`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ yaml: composeYaml }),
+        body: JSON.stringify({ yaml: composeYaml, env: composeEnvExists ? composeEnv : '' }),
       });
       if (res.ok) {
+        const data = await res.json();
         setComposeSource('stored');
-        setComposeMsg('Compose enregistré.');
+        setComposeEnvExists(Boolean(data.env_exists));
+        if (!data.env_exists) setComposeTab('compose');
+        setComposeMsg('Enregistré.');
       } else {
         setComposeMsg(await res.text());
       }
@@ -200,6 +222,41 @@ export default function App() {
       setComposeMsg(String(err));
     }
     setComposeSaving(false);
+  };
+
+  const applyCompose = async () => {
+    if (!composeContainerId) return;
+    if (
+      !confirm(
+        `Recréer le conteneur « ${composeService} » à partir de ce compose ?\n\n` +
+          `Le conteneur actuel sera conservé en sauvegarde et restauré automatiquement ` +
+          `si le nouveau ne démarre pas ou devient unhealthy.`
+      )
+    ) {
+      return;
+    }
+    setComposeApplying(true);
+    setComposeMsg(null);
+    setComposeApplyResult(null);
+    try {
+      const res = await fetch(`/api/docker/containers/${composeContainerId}/compose/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yaml: composeYaml, env: composeEnvExists ? composeEnv : '' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComposeApplyResult(data);
+        setComposeSource('stored');
+        if (data.status === 'applied') setComposeMsg('Appliqué avec succès.');
+        loadDocker();
+      } else {
+        setComposeMsg(await res.text());
+      }
+    } catch (err) {
+      setComposeMsg(String(err));
+    }
+    setComposeApplying(false);
   };
 
   const loadProxmox = async () => {
@@ -647,15 +704,64 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    <textarea
-                      value={composeYaml}
-                      onChange={(e) => setComposeYaml(e.target.value)}
-                      spellCheck={false}
-                      className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
-                    />
+                    <div className="flex items-center gap-1 mb-3 border-b border-[#2E2A27]">
+                      <button
+                        onClick={() => setComposeTab('compose')}
+                        className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                          composeTab === 'compose'
+                            ? 'border-orange-500 text-orange-500'
+                            : 'border-transparent text-stone-400 hover:text-stone-200'
+                        }`}
+                      >
+                        <FileCode className="w-3.5 h-3.5" /> docker-compose.yml
+                      </button>
+                      {composeEnvExists ? (
+                        <button
+                          onClick={() => setComposeTab('env')}
+                          className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                            composeTab === 'env'
+                              ? 'border-orange-500 text-orange-500'
+                              : 'border-transparent text-stone-400 hover:text-stone-200'
+                          }`}
+                        >
+                          <FileText className="w-3.5 h-3.5" /> .env
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setComposeEnvExists(true);
+                            setComposeTab('env');
+                          }}
+                          title="Créer un fichier .env associé"
+                          className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 border-transparent -mb-px text-stone-500 hover:text-orange-500 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> .env
+                        </button>
+                      )}
+                    </div>
+
+                    {composeTab === 'compose' ? (
+                      <textarea
+                        value={composeYaml}
+                        onChange={(e) => setComposeYaml(e.target.value)}
+                        spellCheck={false}
+                        className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
+                      />
+                    ) : (
+                      <textarea
+                        value={composeEnv}
+                        onChange={(e) => setComposeEnv(e.target.value)}
+                        spellCheck={false}
+                        placeholder="CLE=VALEUR"
+                        className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-orange-200 focus:border-orange-500 focus:outline-none resize-none"
+                      />
+                    )}
+
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <p className="text-xs text-stone-500">
-                        {composeSource === 'generated'
+                        {composeTab === 'env'
+                          ? 'Fichier .env associé au service. Enregistrez pour le conserver.'
+                          : composeSource === 'generated'
                           ? 'Aperçu généré depuis le conteneur. Enregistrez pour conserver vos modifications.'
                           : 'Définition enregistrée pour ce service.'}
                       </p>
@@ -663,14 +769,51 @@ export default function App() {
                         {composeMsg && <span className="text-xs text-stone-300">{composeMsg}</span>}
                         <button
                           onClick={saveCompose}
-                          disabled={composeSaving}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
+                          disabled={composeSaving || composeApplying}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2E2A27] hover:bg-[#3a3531] text-sm font-medium disabled:opacity-50 transition-colors"
                         >
                           <Save className="w-4 h-4" />
                           {composeSaving ? 'Enregistrement...' : 'Enregistrer'}
                         </button>
+                        <button
+                          onClick={applyCompose}
+                          disabled={composeSaving || composeApplying}
+                          title="Enregistrer puis recréer le conteneur (rollback automatique)"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
+                        >
+                          <Rocket className={`w-4 h-4 ${composeApplying ? 'animate-pulse' : ''}`} />
+                          {composeApplying ? 'Application...' : 'Enregistrer et Appliquer'}
+                        </button>
                       </div>
                     </div>
+
+                    {composeApplyResult && (
+                      <div
+                        className={`mt-3 rounded-lg border p-3 text-xs ${
+                          composeApplyResult.status === 'applied'
+                            ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
+                            : 'border-red-500/30 bg-red-950/25 text-red-300'
+                        }`}
+                      >
+                        <p className="font-medium mb-1">
+                          {composeApplyResult.status === 'applied'
+                            ? 'Conteneur recréé et démarré.'
+                            : 'Échec — conteneur précédent restauré (rollback).'}
+                        </p>
+                        {composeApplyResult.message && <p className="opacity-80">{composeApplyResult.message}</p>}
+                        {composeApplyResult.ai_diagnosis && (
+                          <p className="mt-2 opacity-90">
+                            <span className="font-medium">Diagnostic IA : </span>
+                            {composeApplyResult.ai_diagnosis}
+                          </p>
+                        )}
+                        {composeApplyResult.logs && (
+                          <pre className="mt-2 max-h-32 overflow-auto rounded bg-[#121110] p-2 font-mono text-[10px] text-stone-300 whitespace-pre-wrap">
+                            {composeApplyResult.logs}
+                          </pre>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
