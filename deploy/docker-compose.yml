@@ -3,20 +3,27 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    image: localhost/homelab-guard:latest
     container_name: homelab-guard
     restart: unless-stopped
+    # Rootless Podman: map container uid 10001 (user "guard") to the host user
+    # so it can read the Podman socket owned by the host user.
+    userns_mode: "keep-id:uid=10001,gid=10001"
     security_opt:
       - no-new-privileges:true
+      - label=disable
     ports:
-      - "8443:8443"
+      - "9015:9015"
     environment:
       - TZ=Europe/Paris
       - MASTER_KEY=${MASTER_KEY}
+      - DOCKER_HOST=unix:///var/run/docker.sock
       - AI_BASE_URL=${AI_BASE_URL:-http://host.containers.internal:11434/v1}
       - AI_API_KEY=${AI_API_KEY:-sk-local}
       - AI_MODEL=${AI_MODEL:-qwen2.5-coder:14b}
     volumes:
-      - ./data:/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../data:/data
+      # Podman exposes a Docker-compatible API on this socket.
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock:/var/run/docker.sock
     extra_hosts:
       - "host.containers.internal:host-gateway"
