@@ -1,5 +1,49 @@
 # Changelog - Homelab Guard
 
+## Version 0.8.0 (2026-11-26)
+
+### 🎉 Validation YAML en direct dans la création de compose (sans IA)
+
+La modale « Nouveau conteneur » valide désormais le compose **pendant la
+saisie** (debounce 350 ms), avant tout déploiement :
+
+- Bandeau vert **« Compose valide »** avec la liste des services détectés.
+- Bandeau rouge **« Compose invalide »** listant chaque erreur avec **numéro de
+  ligne**, champ concerné et message.
+- Bandeau orange pour les **avertissements** (non bloquants).
+- Le bouton **« Créer le conteneur » est désactivé** tant que le compose est
+  invalide, avec une infobulle explicative.
+- La création renvoie aussi une **erreur JSON structurée** (HTTP 400) si la
+  validation échoue, donc aucun appel au moteur pour un compose cassé.
+
+### 🔍 Contrôles effectués
+
+**Syntaxe / structure**
+- YAML invalide → erreur avec ligne.
+- **Tabulations** dans l'indentation (interdites en YAML) → erreur ciblée.
+- **Indentation impaire** (ex. 3 espaces) → erreur pointant la **vraie ligne
+  fautive** (le parseur YAML, lui, signale souvent la ligne précédente).
+- Espaces en fin de ligne → avertissement.
+- Racine non-objet, section `services` absente ou vide.
+
+**Sémantique (ce qui ferait échouer le déploiement)**
+- `image` obligatoire et **référence d'image validée** (`distribution/reference`) ;
+  `build` signalé comme non supporté.
+- `container_name` valide, `restart` dans l'énumération autorisée.
+- **Ports** : format `hôte:conteneur` / `conteneur` / `ip:hôte:conteneur`,
+  numéricité, protocole, syntaxe longue (`target`/`published`).
+- **Variables d'environnement** : `CLE=VALEUR`, noms valides.
+- **Volumes** : espaces interdits, volume anonyme signalé.
+- `command`/`entrypoint`/`labels` : type attendu.
+- `version` obsolète et clés de premier niveau inconnues → avertissements.
+- **`${VAR}` absente du `.env`** → avertissement explicite.
+- Plusieurs services → avertissement (seul celui du nom sera créé).
+
+### 🔧 Backend
+- `POST /api/docker/compose/validate` → résultat structuré
+  (`valid`, `errors[]`, `warnings[]`, `services[]`).
+- Nouveau fichier `backend/internal/updater/validate.go`.
+
 ## Version 0.7.1 (2026-11-26)
 
 ### 🎉 Réseaux et ports visibles dans la liste des conteneurs

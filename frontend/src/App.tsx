@@ -24,6 +24,8 @@ import {
   Database,
   Loader2,
   Plug,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -176,6 +178,15 @@ export default function App() {
     ai_diagnosis?: string;
   } | null>(null);
 
+  // Live compose validation
+  const [validation, setValidation] = useState<{
+    valid: boolean;
+    errors: { severity: string; line?: number; field?: string; message: string }[];
+    warnings: { severity: string; line?: number; field?: string; message: string }[];
+    services: string[];
+  } | null>(null);
+  const [validating, setValidating] = useState(false);
+
   const loadDocker = async () => {
     const res = await fetch('/api/docker/containers');
     if (res.ok) {
@@ -254,6 +265,7 @@ export default function App() {
     setCreateTouched(false);
     setCreateMsg(null);
     setCreateResult(null);
+    setValidation(null);
   };
 
   const changeCreateName = (value: string) => {
@@ -283,13 +295,45 @@ export default function App() {
         setCreateResult(data);
         loadDocker();
       } else {
-        setCreateMsg(await res.text());
+        const text = await res.text();
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && Array.isArray(parsed.errors)) {
+            setValidation(parsed);
+            setCreateMsg('Compose invalide — corrigez les erreurs signalées.');
+          } else {
+            setCreateMsg(parsed.message || text);
+          }
+        } catch {
+          setCreateMsg(text);
+        }
       }
     } catch (err) {
       setCreateMsg(String(err));
     }
     setCreating(false);
   };
+
+  // Debounced server-side validation of the compose being edited.
+  useEffect(() => {
+    if (!createOpen) return;
+    const timer = setTimeout(async () => {
+      setValidating(true);
+      try {
+        const res = await fetch('/api/docker/compose/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ yaml: createYaml, env: createEnvExists ? createEnv : '' }),
+        });
+        if (res.ok) setValidation(await res.json());
+      } catch {
+        /* ignore transient errors while typing */
+      } finally {
+        setValidating(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [createOpen, createYaml, createEnv, createEnvExists]);
 
   const openCompose = async (id: string) => {
     setComposeOpen(true);
@@ -912,10 +956,20 @@ export default function App() {
                     {createMsg && <span className="text-xs text-red-300">{createMsg}</span>}
                     <button
                       onClick={createContainer}
-                      disabled={creating || !createName.trim()}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
+                      disabled={
+                        creating ||
+                        !createName.trim() ||
+                        validating ||
+                        (validation !== null && !validation.valid)
+                      }
+                      title={
+                        validation && !validation.valid
+                          ? 'Corrigez les erreurs de validation avant de créer le conteneur'
+                          : 'Créer et démarrer le conteneur'
+                      }
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {creating ? (
+                      {creating || validating ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Rocket className="w-4 h-4" />
@@ -924,6 +978,79 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* Compose validation feedback */}
+                {validating && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2E2A27] bg-[#121110] p-3 text-xs text-stone-400">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                    Analyse du YAML…
+                  </div>
+                )}
+                {!validating && validation && (
+                  <div className="mt-3 space-y-2">
+                    {validation.valid ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs text-emerald-300">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>
+                          Compose valide
+                          {validation.services.length > 0 &&
+                            ` — service(s) : ${validation.services.join(', ')}`}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-300">
+                        <p className="font-medium mb-1.5 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" /> Compose invalide —{' '}
+                          {validation.errors.length} erreur(s)
+                        </p>
+                        <ul className="space-y-1">
+                          {validation.errors.map((e, i) => (
+                            <li key={`err-${i}`} className="flex gap-2">
+                              <span className="font-mono text-[11px] text-red-400/80 shrink-0">
+                                {e.line ? `ligne ${e.line}` : '—'}
+                              </span>
+                              <span>
+                                {e.field && (
+                                  <code className="font-mono text-[11px] text-red-200/90">
+                                    {e.field}
+                                  </code>
+                                )}
+                                {e.field ? ' : ' : ''}
+                                {e.message}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {validation.warnings.length > 0 && (
+                      <div className="rounded-lg border border-orange-500/30 bg-orange-950/20 p-3 text-xs text-orange-200">
+                        <p className="font-medium mb-1.5 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" /> {validation.warnings.length}{' '}
+                          avertissement(s)
+                        </p>
+                        <ul className="space-y-1">
+                          {validation.warnings.map((w, i) => (
+                            <li key={`warn-${i}`} className="flex gap-2">
+                              <span className="font-mono text-[11px] text-orange-300/80 shrink-0">
+                                {w.line ? `ligne ${w.line}` : '—'}
+                              </span>
+                              <span>
+                                {w.field && (
+                                  <code className="font-mono text-[11px] text-orange-100/90">
+                                    {w.field}
+                                  </code>
+                                )}
+                                {w.field ? ' : ' : ''}
+                                {w.message}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {createResult && (
                   <div

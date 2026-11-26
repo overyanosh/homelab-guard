@@ -394,6 +394,19 @@ func main() {
 		})
 	})
 
+	// --- Compose validation (used by the non-AI container creation form) ---
+	mux.HandleFunc("POST /api/docker/compose/validate", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			YAML string `json:"yaml"`
+			Env  string `json:"env"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, updater.ValidateCompose(req.YAML, req.Env))
+	})
+
 	// --- Save & apply: recreate the container from the compose definition ---
 	mux.HandleFunc("POST /api/docker/containers/compose", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -408,6 +421,10 @@ func main() {
 		name := strings.TrimSpace(req.Name)
 		if name == "" {
 			http.Error(w, "container name is required", http.StatusBadRequest)
+			return
+		}
+		if result := updater.ValidateCompose(req.YAML, req.Env); !result.Valid {
+			writeJSON(w, http.StatusBadRequest, result)
 			return
 		}
 
