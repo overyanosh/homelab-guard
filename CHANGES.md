@@ -1,5 +1,33 @@
 # Changelog - Homelab Guard
 
+## Version 0.8.1 (2026-11-27)
+
+### 🎉 Variables `.env` manquantes : clés ajoutées automatiquement
+
+Lorsqu'un compose référence une variable (`${SECRET_KEY}`, `$API_TOKEN`) qui
+n'existe pas dans le `.env`, la modale « Nouveau conteneur » :
+
+1. **ajoute automatiquement la clé** au `.env` avec une valeur vide
+   (`SECRET_KEY=`), active l'onglet `.env` et affiche un **compteur orange** sur
+   cet onglet ;
+2. affiche un panneau **« Variables requises par le compose »** listant chaque
+   clé avec :
+   - un **champ de saisie** (masqué pour les noms sensibles : `*KEY*`,
+     `*SECRET*`, `*TOKEN*`, `*PASSWORD*`),
+   - un badge d'état : **`absente`** (rouge) ou **`valeur manquante`** (orange) ;
+3. met à jour le `.env` en direct à chaque frappe (la ligne existante est
+   remplacée, sinon la clé est ajoutée).
+
+Les variables avec valeur par défaut (`${VAR:-défaut}`) sont ignorées : elles
+n'ont pas besoin d'être déclarées.
+
+### 🔧 Backend
+- `ValidationResult` expose désormais `missing_env[]` et `empty_env[]`
+  (triés, sans doublon) en plus des avertissements.
+- Distinction explicite des messages :
+  - `variable ${X} référencée mais absente du .env`
+  - `variable ${X} déclarée dans le .env sans valeur`
+
 ## Version 0.8.0 (2026-11-26)
 
 ### 🎉 Validation YAML en direct dans la création de compose (sans IA)

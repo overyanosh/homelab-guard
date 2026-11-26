@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Shield,
+  Lock,
   Box,
   Server,
   Terminal as TermIcon,
@@ -184,6 +185,8 @@ export default function App() {
     errors: { severity: string; line?: number; field?: string; message: string }[];
     warnings: { severity: string; line?: number; field?: string; message: string }[];
     services: string[];
+    missing_env?: string[];
+    empty_env?: string[];
   } | null>(null);
   const [validating, setValidating] = useState(false);
 
@@ -254,6 +257,31 @@ export default function App() {
     ports:
       - "8080:80"
 `;
+
+  // --- .env helpers -------------------------------------------------------
+  const envKeys = (text: string): string[] =>
+    text
+      .split('\n')
+      .map((line) => line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/))
+      .filter((m): m is RegExpMatchArray => m !== null)
+      .map((m) => m[1]);
+
+  const setEnvValue = (text: string, key: string, value: string): string => {
+    const lines = text.split('\n');
+    let found = false;
+    const updated = lines.map((line) => {
+      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+      if (m && m[1] === key) {
+        found = true;
+        return `${key}=${value}`;
+      }
+      return line;
+    });
+    if (!found) updated.push(`${key}=${value}`);
+    return updated.join('\n');
+  };
+
+  const isSensitiveKey = (key: string) => /KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD/i.test(key);
 
   const openCreate = () => {
     setCreateOpen(true);
@@ -334,6 +362,23 @@ export default function App() {
     }, 350);
     return () => clearTimeout(timer);
   }, [createOpen, createYaml, createEnv, createEnvExists]);
+
+  // Automatically add referenced-but-missing keys to the .env with an empty
+  // value, so the user only has to fill in the value.
+  useEffect(() => {
+    if (!createOpen) return;
+    const missing = validation?.missing_env ?? [];
+    if (missing.length === 0) return;
+    setCreateEnvExists(true);
+    setCreateEnv((prev) => {
+      const existing = new Set(envKeys(prev));
+      const toAdd = missing.filter((k) => !existing.has(k));
+      if (toAdd.length === 0) return prev;
+      const base = prev.trim().length > 0 ? prev.replace(/\s*$/, '') + '\n' : '';
+      return base + toAdd.map((k) => `${k}=`).join('\n') + '\n';
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createOpen, validation]);
 
   const openCompose = async (id: string) => {
     setComposeOpen(true);
@@ -924,6 +969,18 @@ export default function App() {
                       <Plus className="w-3.5 h-3.5" /> .env
                     </button>
                   )}
+                  {(() => {
+                    const gaps =
+                      (validation?.missing_env?.length ?? 0) + (validation?.empty_env?.length ?? 0);
+                    return gaps > 0 ? (
+                      <span
+                        title={`${gaps} variable(s) sans valeur`}
+                        className="mb-1 ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-orange-500/20 text-orange-300"
+                      >
+                        <AlertCircle className="w-3 h-3" /> {gaps}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
 
                 {createTab === 'compose' ? (
@@ -988,8 +1045,7 @@ export default function App() {
                 )}
                 {!validating && validation && (
                   <div className="mt-3 space-y-2">
-                    {validation.valid ? (
-                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs text-emerald-300">
+                    {validation.valid ? (                      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs text-emerald-300">
                         <CheckCircle2 className="w-4 h-4 shrink-0" />
                         <span>
                           Compose valide
@@ -1049,6 +1105,64 @@ export default function App() {
                         </ul>
                       </div>
                     )}
+
+                    {/* Missing / empty .env variables: fill values inline */}
+                    {(() => {
+                      const missing = validation.missing_env ?? [];
+                      const empty = validation.empty_env ?? [];
+                      const keys = [...new Set([...missing, ...empty])];
+                      if (keys.length === 0) return null;
+                      const values: Record<string, string> = {};
+                      createEnv.split('\n').forEach((line) => {
+                        const m = line.match(
+                          /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/
+                        );
+                        if (m) values[m[1]] = m[2].trim();
+                      });
+                      return (
+                        <div className="rounded-lg border border-orange-500/30 bg-[#1C1A18]/70 p-3">
+                          <p className="text-xs font-medium text-orange-200 mb-2 flex items-center gap-2">
+                            <Lock className="w-4 h-4" />
+                            Variables requises par le compose ({keys.length})
+                          </p>
+                          <div className="space-y-2">
+                            {keys.map((key) => {
+                              const isMissing = missing.includes(key);
+                              return (
+                                <div key={key} className="flex items-center gap-2">
+                                  <code className="w-44 shrink-0 truncate font-mono text-[11px] text-orange-300">
+                                    {key}
+                                  </code>
+                                  <input
+                                    type={isSensitiveKey(key) ? 'password' : 'text'}
+                                    value={values[key] ?? ''}
+                                    onChange={(e) => {
+                                      setCreateEnvExists(true);
+                                      setCreateEnv((prev) => setEnvValue(prev, key, e.target.value));
+                                    }}
+                                    placeholder="valeur à renseigner…"
+                                    className="flex-1 rounded-md border border-[#2E2A27] bg-[#121110] px-2 py-1 font-mono text-[11px] text-stone-100 placeholder-stone-600 focus:border-orange-500 focus:outline-none"
+                                  />
+                                  <span
+                                    className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${
+                                      isMissing
+                                        ? 'bg-red-500/15 text-red-300'
+                                        : 'bg-orange-500/15 text-orange-300'
+                                    }`}
+                                  >
+                                    {isMissing ? 'absente' : 'valeur manquante'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-2 text-[11px] text-stone-500">
+                            Les clés sont ajoutées automatiquement au <code className="font-mono">.env</code> ;
+                            renseignez leur valeur ci-dessus (elle est aussi éditable dans l'onglet .env).
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 

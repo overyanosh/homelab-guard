@@ -3,6 +3,7 @@ package updater
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,10 @@ type ValidationResult struct {
 	Errors   []ValidationIssue `json:"errors"`
 	Warnings []ValidationIssue `json:"warnings"`
 	Services []string          `json:"services"`
+	// MissingEnv lists variables referenced by the compose but absent from .env.
+	MissingEnv []string `json:"missing_env,omitempty"`
+	// EmptyEnv lists variables declared in .env but left without a value.
+	EmptyEnv []string `json:"empty_env,omitempty"`
 }
 
 var (
@@ -63,8 +68,14 @@ func ValidateCompose(doc, dotEnv string) ValidationResult {
 	}
 
 	vars := ParseDotEnv(dotEnv)
-	for name := range envMissing(doc, vars) {
-		warnf(0, 0, name, fmt.Sprintf("variable ${%s} utilisée mais absente du .env", name))
+	missing, empty := envGaps(doc, vars)
+	res.MissingEnv = missing
+	res.EmptyEnv = empty
+	for _, name := range missing {
+		warnf(0, 0, name, fmt.Sprintf("variable ${%s} référencée mais absente du .env", name))
+	}
+	for _, name := range empty {
+		warnf(0, 0, name, fmt.Sprintf("variable ${%s} déclarée dans le .env sans valeur", name))
 	}
 
 	var root yaml.Node
@@ -321,26 +332,33 @@ func validateVolumes(n *yaml.Node, service string, vars map[string]string, errf 
 	}
 }
 
-// envMissing returns the variables referenced with ${VAR} or $VAR in doc that are
-// not defined in vars.
-func envMissing(doc string, vars map[string]string) map[string]struct{} {
-	missing := map[string]struct{}{}
+// envGaps reports the variables referenced by the compose that are missing from
+// the .env (sorted) and those declared there with no value. Variables using a
+// ${VAR:-default} form are optional and therefore ignored.
+func envGaps(doc string, vars map[string]string) (missing, empty []string) {
+	required := map[string]struct{}{}
 	for _, m := range envBracedRe.FindAllStringSubmatch(doc, -1) {
-		name := m[1]
-		if _, ok := vars[name]; !ok {
-			if len(m) > 2 && m[2] != "" {
-				continue // ${VAR:-default} is fine
-			}
-			missing[name] = struct{}{}
+		if len(m) > 2 && m[2] != "" {
+			continue // ${VAR:-default}: has a fallback
 		}
+		required[m[1]] = struct{}{}
 	}
 	for _, m := range envPlainRe.FindAllStringSubmatch(doc, -1) {
-		name := m[1]
-		if _, ok := vars[name]; !ok {
-			missing[name] = struct{}{}
+		required[m[1]] = struct{}{}
+	}
+
+	for name := range required {
+		val, ok := vars[name]
+		switch {
+		case !ok:
+			missing = append(missing, name)
+		case strings.TrimSpace(val) == "":
+			empty = append(empty, name)
 		}
 	}
-	return missing
+	sort.Strings(missing)
+	sort.Strings(empty)
+	return missing, empty
 }
 
 var serviceNameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
