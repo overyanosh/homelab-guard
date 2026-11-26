@@ -69,6 +69,14 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "homelab-guard"})
 	})
 
+	// --- Auto-register Local Agent ---
+	localAgentNode, err := dbStore.CreateAgentNode("Local Host")
+	if err != nil {
+		log.Printf("Warning: Could not auto-register local agent: %v", err)
+	} else {
+		log.Printf("✅ Local agent auto-registered (ID: %d, Name: %s)", localAgentNode.ID, localAgentNode.Name)
+	}
+
 	// --- Remote Agent Hub ---
 	mux.HandleFunc("GET /ws/agent", func(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -101,7 +109,18 @@ func main() {
 		out := make([]nodeStatus, 0, len(nodes))
 		for _, n := range nodes {
 			item := nodeStatus{AgentNode: n}
-			if live, ok := connected[n.ID]; ok {
+			// Mark "Local Host" as always online since it's self-managing
+			if strings.Contains(n.Name, "Local") {
+				item.Online = true
+				hb := agenthub.NodeHeartbeat{
+					Hostname:      "localhost",
+					SwarmActive:   true,
+					SwarmNodeRole: "manager",
+					Containers:    0,
+					Timestamp:     time.Now().Unix(),
+				}
+				item.LastHeartbeat = &hb
+			} else if live, ok := connected[n.ID]; ok {
 				item.Online = true
 				hb := live.LastHeartbeat
 				item.LastHeartbeat = &hb
