@@ -347,9 +347,95 @@ func (e *Engine) ApplyCompose(ctx context.Context, containerID, service, compose
 	}, nil
 }
 
+// CreateFromCompose creates and starts a brand-new container from a compose
+// service definition. On failure the half-created container is removed.
+func (e *Engine) CreateFromCompose(ctx context.Context, name, composeDoc, dotEnv string) (*ApplyResult, error) {
+	vars := ParseDotEnv(dotEnv)
+	svc, err := ParseComposeService(composeDoc, name, vars)
+	if err != nil {
+		return nil, err
+	}
+
+	containerName := strings.TrimPrefix(strings.TrimSpace(name), "/")
+	if containerName == "" {
+		containerName = strings.TrimPrefix(svc.ContainerName, "/")
+	}
+	if !validContainerName(containerName) {
+		return nil, fmt.Errorf("invalid container name %q (allowed: letters, digits, '_', '.', '-')", containerName)
+	}
+	if strings.TrimSpace(svc.Image) == "" {
+		return nil, fmt.Errorf("compose definition has no image")
+	}
+
+	// Best-effort pull so a missing image can still be created.
+	pullCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	if rc, err := e.docker.ImagePull(pullCtx, svc.Image, image.PullOptions{}); err == nil {
+		_, _ = io.Copy(io.Discard, rc)
+		_ = rc.Close()
+	}
+	cancel()
+
+	cfg, hc, netCfg, err := buildConfig(dockerTypes.ContainerJSON{}, svc, svc.Image)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Hostname = ""
+
+	created, err := e.docker.ContainerCreate(ctx, cfg, hc, netCfg, nil, containerName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container: %w", err)
+	}
+
+	force := true
+	if err := e.docker.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		logs := e.collectContainerLogs(ctx, created.ID)
+		_ = e.docker.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: force})
+		return &ApplyResult{
+			ContainerName: containerName,
+			Image:         svc.Image,
+			Status:        "failed",
+			Message:       fmt.Sprintf("container failed to start: %v", err),
+			Logs:          logs,
+			AIDiagnosis:   e.requestAIDiagnosis(containerName, "compose create failed to start", logs),
+		}, nil
+	}
+
+	if reason := e.waitUntilHealthy(ctx, created.ID, svc.Environment); reason != "" {
+		logs := e.collectContainerLogs(ctx, created.ID)
+		_ = e.docker.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: force})
+		return &ApplyResult{
+			ContainerName: containerName,
+			Image:         svc.Image,
+			Status:        "failed",
+			Message:       reason,
+			Logs:          logs,
+			AIDiagnosis:   e.requestAIDiagnosis(containerName, "compose create failed health check", logs),
+		}, nil
+	}
+
+	return &ApplyResult{
+		ContainerName: containerName,
+		Image:         svc.Image,
+		Status:        "created",
+		Message:       "container created and started",
+	}, nil
+}
+
+var containerNameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+func validContainerName(name string) bool {
+	return containerNameRe.MatchString(name)
+}
+
 // buildConfig derives Config/HostConfig from the inspected container, overridden
 // by the compose service fields.
 func buildConfig(insp dockerTypes.ContainerJSON, svc *ComposeService, imageRef string) (*container.Config, *container.HostConfig, *network.NetworkingConfig, error) {
+	// ContainerJSON embeds *ContainerJSONBase: when building from scratch (new
+	// container) it is nil, so make sure the embedded struct exists.
+	if insp.ContainerJSONBase == nil {
+		insp.ContainerJSONBase = &dockerTypes.ContainerJSONBase{}
+	}
+
 	cfg := container.Config{Image: imageRef}
 	if insp.Config != nil {
 		cfg = *insp.Config

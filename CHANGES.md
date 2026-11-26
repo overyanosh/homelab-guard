@@ -1,5 +1,41 @@
 # Changelog - Homelab Guard
 
+## Version 0.7.0 (2026-11-26)
+
+### 🎉 Création de conteneur depuis un compose (sans IA)
+
+Bouton **« Nouveau »** (orange) à côté d'« Actualiser » sur la page Podman,
+Docker & Swarm. Il ouvre la même interface que l'éditeur Compose, mais :
+
+- le **nom du conteneur se saisit dans un champ** placé après le titre de la
+  modale (au lieu de reprendre le nom du conteneur courant) ;
+- les onglets **docker-compose.yml** et **.env** sont disponibles, avec
+  **substitution `${VAR}`** depuis le `.env` ;
+- le squelette YAML se met à jour automatiquement avec le nom saisi tant que
+  l'utilisateur n'a pas modifié le contenu.
+
+À la création :
+1. Pull best-effort de l'image.
+2. Création puis démarrage du conteneur avec le nom saisi (`restart`, `ports`,
+   `volumes`, `environment`, `labels`, `command`, `network_mode`).
+3. Contrôle de santé (jusqu'à 40 s) ; en cas d'échec le conteneur est
+   **supprimé** et les logs + diagnostic IA sont affichés.
+4. Le compose et le `.env` sont **enregistrés** pour ce conteneur (onglet Compose
+   pré-rempli ensuite).
+5. Nom validé (`[a-zA-Z0-9][a-zA-Z0-9_.-]*`), sinon HTTP 400.
+
+### 🔧 Moteur de conteneurs reconnu
+
+- La colonne **Moteur** affiche désormais le runtime réel. Il est détecté au
+  démarrage via `/version` (Podman expose un composant « Podman Engine »),
+  avec repli sur `/info` ; journalisé : `Container engine detected: podman`.
+- `runtime` est renvoyé par `GET /api/docker/containers` (auparavant absent, la
+  colonne affichait « inconnu »).
+
+### 🐛 Correctifs
+- `buildConfig` plantait (nil pointer) lors d'une création depuis zéro, car
+  `ContainerJSON.ContainerJSONBase` est nil quand aucun conteneur n'existe.
+
 ## Version 0.6.1 (2026-11-26)
 
 ### 🛡 Sécurisation de la suppression d'images

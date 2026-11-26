@@ -29,12 +29,13 @@ import (
 )
 
 type ContainerSummary struct {
-	ID     string             `json:"id"`
-	Names  []string           `json:"names"`
-	Image  string             `json:"image"`
-	State  string             `json:"state"`
-	Status string             `json:"status"`
-	Guard  labels.GuardConfig `json:"guard"`
+	ID      string             `json:"id"`
+	Names   []string           `json:"names"`
+	Image   string             `json:"image"`
+	State   string             `json:"state"`
+	Status  string             `json:"status"`
+	Runtime string             `json:"runtime"`
+	Guard   labels.GuardConfig `json:"guard"`
 }
 
 // New type for update check response
@@ -61,6 +62,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Docker client error: %v", err)
 	}
+
+	runtimeName := detectRuntimeName(dockerCli)
+	log.Printf("Container engine detected: %s", runtimeName)
 
 	updateEngine := updater.NewEngine(dockerCli, "http://127.0.0.1:8001")
 	hub := agenthub.NewHub()
@@ -222,12 +226,13 @@ func main() {
 		res := make([]ContainerSummary, 0, len(containers))
 		for _, c := range containers {
 			res = append(res, ContainerSummary{
-				ID:     c.ID[:12],
-				Names:  c.Names,
-				Image:  c.Image,
-				State:  c.State,
-				Status: c.Status,
-				Guard:  labels.ParseDockerLabels(c.Labels),
+				ID:      c.ID[:12],
+				Names:   c.Names,
+				Image:   c.Image,
+				State:   c.State,
+				Status:  c.Status,
+				Runtime: runtimeName,
+				Guard:   labels.ParseDockerLabels(c.Labels),
 			})
 		}
 		writeJSON(w, http.StatusOK, res)
@@ -322,6 +327,34 @@ func main() {
 	})
 
 	// --- Save & apply: recreate the container from the compose definition ---
+	mux.HandleFunc("POST /api/docker/containers/compose", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name string `json:"name"`
+			YAML string `json:"yaml"`
+			Env  string `json:"env"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(req.Name)
+		if name == "" {
+			http.Error(w, "container name is required", http.StatusBadRequest)
+			return
+		}
+
+		result, err := updateEngine.CreateFromCompose(r.Context(), name, req.YAML, req.Env)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Keep the definition for the new container's compose tab.
+		service := result.ContainerName
+		_ = dbStore.SaveCompose(service, req.YAML)
+		_ = dbStore.SaveComposeEnv(service, req.Env)
+		writeJSON(w, http.StatusOK, result)
+	})
+
 	mux.HandleFunc("POST /api/docker/containers/{id}/compose/apply", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		var req struct {
@@ -651,6 +684,37 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// detectRuntimeName identifies the container engine behind the Docker-compatible
+// socket. Podman reports a "Podman Engine" component in /version, while Docker
+// reports "Engine"/"Docker Engine".
+func detectRuntimeName(dockerCli *client.Client) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if v, err := dockerCli.ServerVersion(ctx); err == nil {
+		for _, c := range v.Components {
+			if strings.Contains(strings.ToLower(c.Name), "podman") {
+				return "podman"
+			}
+		}
+		if strings.Contains(strings.ToLower(v.Platform.Name), "podman") {
+			return "podman"
+		}
+		for _, c := range v.Components {
+			if strings.Contains(strings.ToLower(c.Name), "engine") {
+				return "docker"
+			}
+		}
+	}
+	if info, err := dockerCli.Info(ctx); err == nil {
+		hay := strings.ToLower(info.Name + " " + info.OperatingSystem + " " + info.ServerVersion)
+		if strings.Contains(hay, "podman") {
+			return "podman"
+		}
+	}
+	return "docker"
 }
 
 // isSensitiveEnv reports whether an environment variable name is likely to hold

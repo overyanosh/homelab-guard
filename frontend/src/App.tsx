@@ -22,6 +22,7 @@ import {
   Network,
   Layers,
   Database,
+  Loader2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -123,6 +124,24 @@ export default function App() {
     ai_diagnosis?: string;
   } | null>(null);
 
+  // New container (compose without AI) state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createYaml, setCreateYaml] = useState('');
+  const [createEnv, setCreateEnv] = useState('');
+  const [createEnvExists, setCreateEnvExists] = useState(false);
+  const [createTab, setCreateTab] = useState<'compose' | 'env'>('compose');
+  const [createTouched, setCreateTouched] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createMsg, setCreateMsg] = useState<string | null>(null);
+  const [createResult, setCreateResult] = useState<{
+    status: string;
+    container_name?: string;
+    message?: string;
+    logs?: string;
+    ai_diagnosis?: string;
+  } | null>(null);
+
   const loadDocker = async () => {
     const res = await fetch('/api/docker/containers');
     if (res.ok) {
@@ -181,6 +200,61 @@ export default function App() {
       console.error('Failed to load logs:', err);
     }
     setLoading(false);
+  };
+
+  const composeTemplate = (name: string) => `services:
+  ${name || 'mon-service'}:
+    image: docker.io/library/nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+`;
+
+  const openCreate = () => {
+    setCreateOpen(true);
+    setCreateName('');
+    setCreateYaml(composeTemplate(''));
+    setCreateEnv('');
+    setCreateEnvExists(false);
+    setCreateTab('compose');
+    setCreateTouched(false);
+    setCreateMsg(null);
+    setCreateResult(null);
+  };
+
+  const changeCreateName = (value: string) => {
+    setCreateName(value);
+    if (!createTouched) {
+      setCreateYaml(composeTemplate(value.trim()));
+    }
+  };
+
+  const createContainer = async () => {
+    if (!createName.trim()) return;
+    setCreating(true);
+    setCreateMsg(null);
+    setCreateResult(null);
+    try {
+      const res = await fetch('/api/docker/containers/compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: createName.trim(),
+          yaml: createYaml,
+          env: createEnvExists ? createEnv : '',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCreateResult(data);
+        loadDocker();
+      } else {
+        setCreateMsg(await res.text());
+      }
+    } catch (err) {
+      setCreateMsg(String(err));
+    }
+    setCreating(false);
   };
 
   const openCompose = async (id: string) => {
@@ -408,6 +482,13 @@ export default function App() {
                 <div className="flex justify-between items-center mb-4">
                   <h1 className="text-xl font-semibold">Podman, Docker & Swarm</h1>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={openCreate}
+                      title="Créer un conteneur à partir d'un compose (sans IA)"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium transition-colors"
+                    >
+                      <Plus className="w-4 h-4" /> Nouveau
+                    </button>
                     <button
                       onClick={() => {
                         loadDocker();
@@ -693,6 +774,147 @@ export default function App() {
               </section>
             )}
           </>
+        )}
+
+        {/* New Container Modal (compose without AI) */}
+        {createOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-3xl bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
+              <div className="flex flex-wrap items-center gap-3 p-4 border-b border-[#2E2A27]">
+                <div className="flex items-center gap-2">
+                  <FileCode className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-lg font-semibold text-stone-100">Nouveau conteneur</h3>
+                </div>
+                <input
+                  autoFocus
+                  value={createName}
+                  onChange={(e) => changeCreateName(e.target.value)}
+                  placeholder="nom-du-conteneur"
+                  className="w-56 rounded-lg border border-[#2E2A27] bg-[#121110] px-3 py-1.5 font-mono text-sm text-orange-400 placeholder-stone-600 focus:border-orange-500 focus:outline-none"
+                />
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/15 text-orange-400">
+                  compose
+                </span>
+                <button
+                  onClick={() => setCreateOpen(false)}
+                  className="ml-auto text-stone-400 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-4">
+                <div className="flex items-center gap-1 mb-3 border-b border-[#2E2A27]">
+                  <button
+                    onClick={() => setCreateTab('compose')}
+                    className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                      createTab === 'compose'
+                        ? 'border-orange-500 text-orange-500'
+                        : 'border-transparent text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <FileCode className="w-3.5 h-3.5" /> docker-compose.yml
+                  </button>
+                  {createEnvExists ? (
+                    <button
+                      onClick={() => setCreateTab('env')}
+                      className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                        createTab === 'env'
+                          ? 'border-orange-500 text-orange-500'
+                          : 'border-transparent text-stone-400 hover:text-stone-200'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" /> .env
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setCreateEnvExists(true);
+                        setCreateTab('env');
+                      }}
+                      title="Créer un fichier .env associé"
+                      className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 border-transparent -mb-px text-stone-500 hover:text-orange-500 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> .env
+                    </button>
+                  )}
+                </div>
+
+                {createTab === 'compose' ? (
+                  <textarea
+                    value={createYaml}
+                    onChange={(e) => {
+                      setCreateYaml(e.target.value);
+                      setCreateTouched(true);
+                    }}
+                    spellCheck={false}
+                    className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
+                  />
+                ) : (
+                  <textarea
+                    value={createEnv}
+                    onChange={(e) => setCreateEnv(e.target.value)}
+                    spellCheck={false}
+                    placeholder="CLE=VALEUR"
+                    className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-orange-200 focus:border-orange-500 focus:outline-none resize-none"
+                  />
+                )}
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="text-xs text-stone-500">
+                    {createTab === 'env'
+                      ? 'Fichier .env associé (substitution ${VAR} dans le compose).'
+                      : 'Le nom saisi ci-dessus devient le nom du conteneur.'}
+                  </p>
+                  <div className="flex items-center gap-3">
+                    {createMsg && <span className="text-xs text-red-300">{createMsg}</span>}
+                    <button
+                      onClick={createContainer}
+                      disabled={creating || !createName.trim()}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {creating ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Rocket className="w-4 h-4" />
+                      )}
+                      {creating ? 'Création...' : 'Créer le conteneur'}
+                    </button>
+                  </div>
+                </div>
+
+                {createResult && (
+                  <div
+                    className={`mt-3 rounded-lg border p-3 text-xs ${
+                      createResult.status === 'created'
+                        ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
+                        : 'border-red-500/30 bg-red-950/25 text-red-300'
+                    }`}
+                  >
+                    <p className="font-medium mb-1">
+                      {createResult.status === 'created'
+                        ? `Conteneur « ${createResult.container_name} » créé et démarré.`
+                        : 'Création échouée — conteneur supprimé.'}
+                    </p>
+                    {createResult.message && (
+                      <p className="opacity-80">{createResult.message}</p>
+                    )}
+                    {createResult.ai_diagnosis && (
+                      <p className="mt-2 opacity-90">
+                        <span className="font-medium">Diagnostic IA : </span>
+                        {createResult.ai_diagnosis}
+                      </p>
+                    )}
+                    {createResult.logs && (
+                      <pre className="mt-2 max-h-32 overflow-auto rounded bg-[#121110] p-2 font-mono text-[10px] text-stone-300 whitespace-pre-wrap">
+                        {createResult.logs}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Logs Modal */}
