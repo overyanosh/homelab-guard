@@ -149,8 +149,21 @@ func registerResourceRoutes(mux *http.ServeMux, dockerCli *client.Client) {
 	})
 
 	mux.HandleFunc("DELETE /api/docker/images/{id}", func(w http.ResponseWriter, r *http.Request) {
-		_, err := dockerCli.ImageRemove(r.Context(), r.PathValue("id"), image.RemoveOptions{Force: true})
-		if err != nil {
+		id := r.PathValue("id")
+		force := r.URL.Query().Get("force") == "true"
+
+		// Removing an image that a container uses is destructive on Podman: its
+		// --force also removes those containers. Refuse unless explicitly forced.
+		if !force {
+			if inUse := containerImageIDs(r.Context(), dockerCli); inUse[id] {
+				http.Error(w,
+					"image is used by a running or stopped container; retry with ?force=true to remove it (this also removes the container)",
+					http.StatusConflict)
+				return
+			}
+		}
+
+		if _, err := dockerCli.ImageRemove(r.Context(), id, image.RemoveOptions{Force: true}); err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -158,34 +171,7 @@ func registerResourceRoutes(mux *http.ServeMux, dockerCli *client.Client) {
 	})
 
 	mux.HandleFunc("POST /api/docker/images/prune", func(w http.ResponseWriter, r *http.Request) {
-		unusedOnly := r.URL.Query().Get("all") != "true"
-		var deleted []string
-		var reclaimed int64
-
-		// Prefer an explicit sweep of locally computed unused images so that both
-		// dangling and untagged-but-referenced-nowhere images disappear.
-		images := listImages(r.Context(), dockerCli)
-		for _, img := range images {
-			if img.InUse {
-				continue
-			}
-			if unusedOnly && !img.Dangling && len(img.Tags) == 0 {
-				continue
-			}
-			if _, err := dockerCli.ImageRemove(r.Context(), img.ID, image.RemoveOptions{Force: true}); err == nil {
-				deleted = append(deleted, img.ShortID)
-				reclaimed += img.Size
-			}
-		}
-		if len(deleted) == 0 {
-			// Fall back to the daemon-side prune (covers build cache leftovers).
-			if report, err := dockerCli.ImagesPrune(r.Context(), filters.NewArgs(filters.Arg("dangling", "true"))); err == nil {
-				reclaimed += int64(report.SpaceReclaimed)
-				for _, item := range report.ImagesDeleted {
-					deleted = append(deleted, item.Deleted)
-				}
-			}
-		}
+		deleted, reclaimed := pruneUnusedImages(r.Context(), dockerCli)
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "space_reclaimed": reclaimed})
 	})
 
@@ -226,7 +212,7 @@ func registerResourceRoutes(mux *http.ServeMux, dockerCli *client.Client) {
 	})
 
 	mux.HandleFunc("POST /api/docker/volumes/prune", func(w http.ResponseWriter, r *http.Request) {
-		var deleted []string
+		deleted := []string{}
 		var reclaimed int64
 		for _, v := range listVolumes(r.Context(), dockerCli) {
 			if v.InUse {
@@ -267,6 +253,38 @@ func registerResourceRoutes(mux *http.ServeMux, dockerCli *client.Client) {
 			"space_reclaimed": report.SpaceReclaimed,
 		})
 	})
+}
+
+// pruneUnusedImages removes every image not referenced by a container. Removal
+// runs in several passes because deleting a layer's child can surface its parent
+// as a new unreferenced image. The reclaimed space is measured on the engine's
+// unique layer storage, not by summing per-image sizes (which share layers).
+func pruneUnusedImages(ctx context.Context, dockerCli *client.Client) ([]string, int64) {
+	before := diskUsage(ctx, dockerCli).ImagesSize
+
+	deleted := []string{}
+	for pass := 0; pass < 8; pass++ {
+		progress := false
+		for _, img := range listImages(ctx, dockerCli) {
+			if img.InUse {
+				continue
+			}
+			if _, err := dockerCli.ImageRemove(ctx, img.ID, image.RemoveOptions{Force: true}); err == nil {
+				deleted = append(deleted, img.ShortID)
+				progress = true
+			}
+		}
+		if !progress {
+			break
+		}
+	}
+
+	after := diskUsage(ctx, dockerCli).ImagesSize
+	reclaimed := before - after
+	if reclaimed < 0 {
+		reclaimed = 0
+	}
+	return deleted, reclaimed
 }
 
 // listImages returns images annotated with whether a container uses them.
@@ -410,16 +428,22 @@ func diskUsage(ctx context.Context, dockerCli *client.Client) DiskUsageInfo {
 	if err != nil {
 		return info
 	}
-	inUse := containerImageIDs(ctx, dockerCli)
 
-	for _, img := range du.Images {
-		if img == nil {
-			continue
+	// LayersSize is the engine's unique layer storage: summing per-image sizes
+	// would count shared layers once per image and wildly overstate the total.
+	info.ImagesSize = du.LayersSize
+	// Only images returned by ImageList can actually be removed; /system/df also
+	// reports intermediate layers that are pinned by their children.
+	var unusedImagesSize int64
+	for _, img := range listImages(ctx, dockerCli) {
+		if !img.InUse {
+			unusedImagesSize += img.Size
 		}
-		info.ImagesSize += img.Size
-		if !inUse[img.ID] && img.Containers == 0 {
-			info.ImagesReclaim += img.Size
-		}
+	}
+	// Reclaimable image space can never exceed the total unique storage.
+	info.ImagesReclaim = unusedImagesSize
+	if info.ImagesReclaim > info.ImagesSize {
+		info.ImagesReclaim = info.ImagesSize
 	}
 	for _, c := range du.Containers {
 		if c == nil {

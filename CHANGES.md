@@ -1,5 +1,31 @@
 # Changelog - Homelab Guard
 
+## Version 0.6.1 (2026-11-26)
+
+### 🛡 Sécurisation de la suppression d'images
+
+- `DELETE /api/docker/images/{id}` **refuse (HTTP 409)** la suppression d'une
+  image utilisée par un conteneur, sauf `?force=true` explicite.
+  *Motif : `podman rmi --force` supprime aussi les conteneurs qui utilisent
+  l'image — une suppression « inoffensive » pouvait donc détruire un conteneur
+  en production.*
+- L'interface désactive également le bouton « Supprimer » pour les images
+  utilisées, avec une infobulle explicative.
+
+### 📊 Mesures d'espace corrigées
+
+- La taille des images affichée utilise désormais le **stockage unique de
+  couches** (`LayersSize`) au lieu de la somme des tailles d'images, qui
+  comptait plusieurs fois les couches partagées (surévaluation ×10).
+- L'espace « récupérable » ne compte que les images réellement supprimables
+  (celles listées par `ImageList`), en excluant les couches intermédiaires
+  figées par leur image enfant.
+- L'espace réellement libéré par un nettoyage est **mesuré avant/après** sur ce
+  stockage unique, et non estimé par addition.
+- Le nettoyage s'exécute en **plusieurs passes** : supprimer une image peut
+  révéler ses parents comme nouvelles images inutilisées.
+- `deleted` est toujours renvoyé sous forme de tableau (jamais `null`).
+
 ## Version 0.6.0 (2026-11-26)
 
 ### 🎉 Sous-menu de gestion des ressources

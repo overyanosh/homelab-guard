@@ -567,7 +567,16 @@ export function ImagesPanel({ onChanged }: { onChanged: () => void }) {
                     </span>
                   </td>
                   <td className="p-3 text-right">
-                    <button onClick={() => remove(img)} className={dangerBtn}>
+                    <button
+                      onClick={() => remove(img)}
+                      disabled={img.in_use}
+                      title={
+                        img.in_use
+                          ? 'Image utilisée par un conteneur — supprimez d’abord le conteneur'
+                          : 'Supprimer'
+                      }
+                      className={dangerBtn}
+                    >
                       <Trash2 className="w-3.5 h-3.5" /> Supprimer
                     </button>
                   </td>
