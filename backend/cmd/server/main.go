@@ -848,6 +848,20 @@ func detectRuntimeName(dockerCli *client.Client) string {
 	return "docker"
 }
 
+// isNoisyLabel filters labels added by build tools and base images, which are
+// not part of the service definition the user wrote.
+func isNoisyLabel(key string) bool {
+	switch {
+	case key == "io.buildah.version",
+		key == "io.container.manager",
+		strings.HasPrefix(key, "org.opencontainers.image."),
+		strings.HasPrefix(key, "org.systemd.property."),
+		strings.HasPrefix(key, "io.buildkit."):
+		return true
+	}
+	return false
+}
+
 // isSensitiveEnv reports whether an environment variable name is likely to hold
 // a secret, so its value is masked when generating a compose preview.
 func isSensitiveEnv(name string) bool {
@@ -948,6 +962,48 @@ func composeFromInspect(c dockertypes.ContainerJSON) string {
 			b.WriteString("    environment:\n")
 			b.WriteString(strings.Join(envs, "\n") + "\n")
 		}
+	}
+
+	// Labels (guard.*, compose metadata, user labels) are part of the container
+	// definition and must survive a regenerate/apply cycle. Tooling noise from
+	// the base image is skipped to keep the file readable.
+	if c.Config != nil && len(c.Config.Labels) > 0 {
+		keys := make([]string, 0, len(c.Config.Labels))
+		for k := range c.Config.Labels {
+			if isNoisyLabel(k) {
+				continue
+			}
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		if len(keys) > 0 {
+			b.WriteString("    labels:\n")
+			for _, k := range keys {
+				b.WriteString("      - \"" + k + "=" + c.Config.Labels[k] + "\"\n")
+			}
+		}
+	}
+
+	// Command / entrypoint, when explicitly set on the container.
+	if c.Config != nil && len(c.Config.Cmd) > 0 {
+		b.WriteString("    command: [")
+		for i, arg := range c.Config.Cmd {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(strconv.Quote(arg))
+		}
+		b.WriteString("]\n")
+	}
+	if c.Config != nil && len(c.Config.Entrypoint) > 0 {
+		b.WriteString("    entrypoint: [")
+		for i, arg := range c.Config.Entrypoint {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(strconv.Quote(arg))
+		}
+		b.WriteString("]\n")
 	}
 
 	if len(c.Mounts) > 0 {

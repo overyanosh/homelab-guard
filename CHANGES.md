@@ -1,5 +1,29 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.1 (2026-11-27)
+
+### 🏷 Labels (et commande) inclus dans le compose généré
+
+Le compose généré depuis un conteneur omettait complètement les `labels` — vous
+ne rêviez pas. Il inclut désormais :
+
+- **`labels`** : labels utilisateur et `guard.*` (`guard.enable`, `guard.group`,
+  `guard.stack`, `guard.service`, …), triés ;
+- **`command`** et **`entrypoint`** lorsqu'ils sont définis sur le conteneur.
+
+Sont filtrés les labels de « bruit » issus des images de base et des outils
+(`io.buildah.version`, `io.container.manager`, `org.opencontainers.image.*`,
+`org.systemd.property.*`, `io.buildkit.*`) pour garder le fichier lisible.
+
+Conséquence : un cycle **générer → appliquer** conserve les labels et la
+commande, donc les conteneurs restent **gérés par `guard.*`** après recréation.
+
+Vérifié :
+- génération → `labels: app.role=web`, `guard.enable=true`, `guard.group=prod`
+  et `command: ["sh","-c","sleep 300"]` ;
+- apply du compose généré → labels et commande préservés ;
+- création depuis un compose avec `labels:` → labels appliqués au conteneur.
+
 ## Version 0.9.0 (2026-11-27)
 
 ### 🐛 « Actualiser » inopérant, conteneurs invisibles, « fantômes »
