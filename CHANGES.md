@@ -1,3 +1,30 @@
+## Version 0.9.25 (2026-11-28)
+
+### 🔒 Scan de sécurité et durcissement de l'image
+
+Scans exécutés : **govulncheck** (Go), **npm audit**, **pip-audit**, **Dependabot**
+et **Trivy** (image, HIGH/CRITICAL).
+
+| Scan | Avant | Après |
+|---|---|---|
+| govulncheck (atteignables) | 0 | **0** |
+| npm audit (prod) | 0 | **0** |
+| pip-audit | 0 | **0** |
+| Trivy image (fixables) | 5 | **0** (hors faux positif setuptools) |
+
+Correctifs appliqués au runtime `python:3.12-slim-bookworm` :
+- `apt-get update && apt-get -y upgrade` → **CVE-2025-6020** (libpam ×4) corrigée
+  et mises à jour Debian appliquées ;
+- `setuptools >= 78.1.1` (installé : 84.2.1) → **CVE-2025-47273** (path traversal).
+
+**Restant, sans correctif disponible** :
+- Debian : 99 HIGH + 2 CRITICAL `Fixed: n/a` — `zlib1g` (CVE-2023-45853,
+  *will_not_fix* par Debian) et `libsqlite3-0` (CVE-2025-7458 ; Homelab Guard
+  utilise SQLite en pur Go, pas la libc).
+- Go : `github.com/docker/docker` — 4 avis Dependabot + 2 CVE Trivy sans version
+  corrigée publiée (module limité à `v28.5.2`) ; concernent des endpoints du
+  démon (cp/archive/plugins) que nous n'exposons pas.
+
 # Changelog - Homelab Guard
 
 ## Version 0.9.23 (2026-11-27) — agent 0.9.22

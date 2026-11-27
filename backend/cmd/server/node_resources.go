@@ -58,20 +58,20 @@ func registerNodeResourceRoutes(mux *http.ServeMux, hub *agenthub.Hub) {
 		}
 	}
 
-	mux.HandleFunc("GET /api/nodes/{id}/networks", proxy("networks_list", 20*time.Second, "", ""))
+	mux.HandleFunc("GET /api/nodes/{id}/networks", proxy("networks_list", 45*time.Second, "", ""))
 	mux.HandleFunc("POST /api/nodes/{id}/networks", proxy("network_create", 30*time.Second, "", ""))
 	mux.HandleFunc("DELETE /api/nodes/{id}/networks/{nid}", proxy("network_remove", 30*time.Second, "nid", "id"))
 	mux.HandleFunc("POST /api/nodes/{id}/networks/prune", proxy("networks_prune", 60*time.Second, "", ""))
 
-	mux.HandleFunc("GET /api/nodes/{id}/images", proxy("images_list", 30*time.Second, "", ""))
+	mux.HandleFunc("GET /api/nodes/{id}/images", proxy("images_list", 60*time.Second, "", ""))
 	mux.HandleFunc("DELETE /api/nodes/{id}/images/{iid}", proxy("image_remove", 120*time.Second, "iid", "id"))
 	mux.HandleFunc("POST /api/nodes/{id}/images/prune", proxy("images_prune", 300*time.Second, "", ""))
 
-	mux.HandleFunc("GET /api/nodes/{id}/volumes", proxy("volumes_list", 30*time.Second, "", ""))
+	mux.HandleFunc("GET /api/nodes/{id}/volumes", proxy("volumes_list", 60*time.Second, "", ""))
 	mux.HandleFunc("POST /api/nodes/{id}/volumes", proxy("volume_create", 30*time.Second, "", ""))
 	mux.HandleFunc("DELETE /api/nodes/{id}/volumes/{name}", proxy("volume_remove", 60*time.Second, "name", "name"))
 	mux.HandleFunc("POST /api/nodes/{id}/volumes/prune", proxy("volumes_prune", 120*time.Second, "", ""))
 
-	mux.HandleFunc("GET /api/nodes/{id}/disk-usage", proxy("disk_usage", 30*time.Second, "", ""))
+	mux.HandleFunc("GET /api/nodes/{id}/disk-usage", proxy("disk_usage", 60*time.Second, "", ""))
 	mux.HandleFunc("POST /api/nodes/{id}/build-cache/prune", proxy("build_cache_prune", 120*time.Second, "", ""))
 }

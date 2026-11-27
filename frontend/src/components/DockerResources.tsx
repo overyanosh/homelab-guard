@@ -111,10 +111,20 @@ export function DiskUsageBar({ refreshKey, base }: { refreshKey: number; base: s
     setSuccess(null);
     let reclaimed = 0;
     try {
+      let imagesCount = 0;
+      let volumesCount = 0;
       const images = await fetch(`${base}/images/prune`, { method: 'POST' });
-      if (images.ok) reclaimed += (await images.json()).space_reclaimed || 0;
+      if (images.ok) {
+        const data = await images.json();
+        reclaimed += data.space_reclaimed || 0;
+        imagesCount = (data.deleted ?? []).length;
+      }
       const volumes = await fetch(`${base}/volumes/prune`, { method: 'POST' });
-      if (volumes.ok) reclaimed += (await volumes.json()).space_reclaimed || 0;
+      if (volumes.ok) {
+        const data = await volumes.json();
+        reclaimed += data.space_reclaimed || 0;
+        volumesCount = (data.deleted ?? []).length;
+      }
       const cache = await fetch(`${base}/build-cache/prune`, { method: 'POST' });
       if (cache.ok) {
         const data = await cache.json();
@@ -127,7 +137,10 @@ export function DiskUsageBar({ refreshKey, base }: { refreshKey: number; base: s
         }
         reclaimed += data.space_reclaimed || 0;
       }
-      setSuccess(`Nettoyage terminé — ${formatBytes(reclaimed)} récupérés.`);
+      setSuccess(
+        `Nettoyage terminé — ${imagesCount} image(s) et ${volumesCount} volume(s) supprimés, ` +
+          `${formatBytes(reclaimed)} récupérés.`
+      );
       await load();
     } catch (err) {
       setError(String(err));
@@ -558,7 +571,9 @@ export function ImagesPanel({ onChanged, base }: { onChanged: () => void; base: 
             {shown.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-4 text-center text-stone-500 text-xs">
-                  Aucune image.
+                  {onlyUnused && images.length > 0
+                    ? `Aucune image inutilisée — ${images.length} image(s) active(s) conservée(s).`
+                    : 'Aucune image.'}
                 </td>
               </tr>
             )}

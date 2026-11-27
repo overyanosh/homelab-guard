@@ -17,8 +17,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /homelab-guard ./cmd/s
 FROM python:3.12-slim-bookworm
 WORKDIR /app
 
+# Security: pick up Debian security updates (libpam CVE-2025-6020 and others).
+RUN apt-get update \
+ && apt-get -y --no-install-recommends upgrade \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY ai-worker/requirements.txt ./ai-worker/
-RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" \
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=78.1.1" \
  && pip install --no-cache-dir -r ./ai-worker/requirements.txt
 
 COPY --from=go-builder /homelab-guard /usr/local/bin/homelab-guard
