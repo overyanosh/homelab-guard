@@ -1,5 +1,24 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.10 (2026-11-27)
+
+### 📐 Modales compose / stack : hauteur 90 % et barre d'actions toujours visible
+
+Avec un gros compose et beaucoup d'erreurs, la modale dépassait l'écran et le
+bouton de validation devenait inatteignable.
+
+Corrections sur les **trois** modales (Nouveau, Compose d'un conteneur, Stack) :
+
+- conteneur en colonne `max-h-[90vh]` avec marge `p-4` sur l'overlay ;
+- **en-tête fixe** (`shrink-0`) ;
+- **zone centrale scrollable** (`flex-1 min-h-0 overflow-y-auto`) contenant
+  l'éditeur, le panneau de validation, les variables `.env` et le résultat ;
+- **barre d'actions fixe** en bas (`shrink-0`, bordure haute) : *Créer* /
+  *Enregistrer* / *Enregistrer et Appliquer* / *Déployer la stack* restent
+  **toujours accessibles**, quel que soit le nombre d'erreurs ;
+- éditeurs dimensionnés en `min(38vh, 420px)` pour laisser de la place au
+  panneau d'erreurs et au pied de modale.
+
 ## Version 0.9.9 (2026-11-27)
 
 ### 🔢 Numéros de ligne dans les éditeurs compose / stacks

@@ -1119,9 +1119,9 @@ export default function App() {
 
         {/* New Container Modal (compose without AI) */}
         {createOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-3xl bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
-              <div className="flex flex-wrap items-center gap-3 p-4 border-b border-[#2E2A27]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
+              <div className="flex shrink-0 flex-wrap items-center gap-3 p-4 border-b border-[#2E2A27]">
                 <div className="flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-orange-500" />
                   <h3 className="text-lg font-semibold text-stone-100">Nouveau conteneur</h3>
@@ -1146,7 +1146,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {createNameTaken && (
                   <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-300">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1206,6 +1206,7 @@ export default function App() {
                       setCreateYaml(v);
                       setCreateTouched(true);
                     }}
+                    height="min(38vh, 420px)"
                     errorLines={errorLinesOf(validation)}
                   />
                 ) : (
@@ -1214,43 +1215,10 @@ export default function App() {
                     onChange={setCreateEnv}
                     placeholder="CLE=VALEUR"
                     tone="env"
+                    height="min(38vh, 420px)"
                   />
                 )}
 
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <p className="text-xs text-stone-500">
-                    {createTab === 'env'
-                      ? 'Fichier .env associé (substitution ${VAR} dans le compose).'
-                      : 'Le nom saisi ci-dessus devient le nom du conteneur.'}
-                  </p>
-                  <div className="flex items-center gap-3">
-                    {createMsg && <span className="text-xs text-red-300">{createMsg}</span>}
-                    <button
-                      onClick={createContainer}
-                      disabled={
-                        creating ||
-                        !createName.trim() ||
-                        validating ||
-                        (validation !== null && !validation.valid) ||
-                        (validation?.services.length ?? 0) > 1 ||
-                        createNameTaken
-                      }
-                      title={
-                        validation && !validation.valid
-                          ? 'Corrigez les erreurs de validation avant de créer le conteneur'
-                          : 'Créer et démarrer le conteneur'
-                      }
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {creating || validating ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Rocket className="w-4 h-4" />
-                      )}
-                      {creating ? 'Création...' : 'Créer le conteneur'}
-                    </button>
-                  </div>
-                </div>
 
                 {(validation?.services.length ?? 0) > 1 && (
                   <div className="mt-3 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-950/20 p-3 text-xs text-orange-200">
@@ -1312,6 +1280,41 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#2E2A27] p-4">
+                <p className="text-xs text-stone-500">
+                  {createTab === 'env'
+                    ? 'Fichier .env associé (substitution ${VAR} dans le compose).'
+                    : 'Le nom saisi ci-dessus devient le nom du conteneur.'}
+                </p>
+                <div className="flex items-center gap-3">
+                  {createMsg && <span className="text-xs text-red-300">{createMsg}</span>}
+                  <button
+                    onClick={createContainer}
+                    disabled={
+                      creating ||
+                      !createName.trim() ||
+                      validating ||
+                      (validation !== null && !validation.valid) ||
+                      (validation?.services.length ?? 0) > 1 ||
+                      createNameTaken
+                    }
+                    title={
+                      validation && !validation.valid
+                        ? 'Corrigez les erreurs de validation avant de créer le conteneur'
+                        : 'Créer et démarrer le conteneur'
+                    }
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {creating || validating ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Rocket className="w-4 h-4" />
+                    )}
+                    {creating ? 'Création...' : 'Créer le conteneur'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1347,9 +1350,9 @@ export default function App() {
 
         {/* Compose Viewer / Editor Modal */}
         {composeOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="w-full max-w-3xl bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
-              <div className="flex items-center justify-between p-4 border-b border-[#2E2A27]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between p-4 border-b border-[#2E2A27]">
                 <div className="flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-orange-500" />
                   <h3 className="text-lg font-semibold text-stone-100">
@@ -1372,7 +1375,7 @@ export default function App() {
                   ✕
                 </button>
               </div>
-              <div className="p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {composeLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <RefreshCw className="w-6 h-6 animate-spin text-orange-500" />
@@ -1438,6 +1441,7 @@ export default function App() {
                       <CodeEditor
                         value={composeYaml}
                         onChange={setComposeYaml}
+                        height="min(38vh, 420px)"
                         errorLines={errorLinesOf(composeValidation)}
                       />
                     ) : (
@@ -1446,6 +1450,7 @@ export default function App() {
                         onChange={setComposeEnv}
                         placeholder="CLE=VALEUR"
                         tone="env"
+                        height="min(38vh, 420px)"
                       />
                     )}
 
@@ -1457,45 +1462,6 @@ export default function App() {
                       onEnvUsed={() => setComposeEnvExists(true)}
                     />
 
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <p className="text-xs text-stone-500">
-                        {composeTab === 'env'
-                          ? 'Fichier .env associé au service. Enregistrez pour le conserver.'
-                          : composeSource === 'generated'
-                          ? 'Aperçu généré depuis le conteneur. Enregistrez pour conserver vos modifications.'
-                          : 'Définition enregistrée pour ce service.'}
-                      </p>
-                      <div className="flex items-center gap-3">
-                        {composeMsg && <span className="text-xs text-stone-300">{composeMsg}</span>}
-                        <button
-                          onClick={saveCompose}
-                          disabled={composeSaving || composeApplying}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2E2A27] hover:bg-[#3a3531] text-sm font-medium disabled:opacity-50 transition-colors"
-                        >
-                          <Save className="w-4 h-4" />
-                          {composeSaving ? 'Enregistrement...' : 'Enregistrer'}
-                        </button>
-                        <button
-                          onClick={applyCompose}
-                          disabled={
-                            composeSaving ||
-                            composeApplying ||
-                            composeValidating ||
-                            (composeValidation !== null && !composeValidation.valid) ||
-                            ((composeValidation?.services.length ?? 0) > 1 && !applyService)
-                          }
-                          title={
-                            composeValidation && !composeValidation.valid
-                              ? 'Corrigez les erreurs de validation avant d’appliquer'
-                              : 'Enregistrer puis recréer le conteneur (rollback automatique)'
-                          }
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
-                        >
-                          <Rocket className={`w-4 h-4 ${composeApplying ? 'animate-pulse' : ''}`} />
-                          {composeApplying ? 'Application...' : 'Enregistrer et Appliquer'}
-                        </button>
-                      </div>
-                    </div>
 
                     {composeApplyResult && (
                       <div
@@ -1526,6 +1492,46 @@ export default function App() {
                     )}
                   </>
                 )}
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#2E2A27] p-4">
+                <p className="text-xs text-stone-500">
+                  {composeTab === 'env'
+                    ? 'Fichier .env associé au service. Enregistrez pour le conserver.'
+                    : composeSource === 'generated'
+                    ? 'Aperçu généré depuis le conteneur. Enregistrez pour conserver vos modifications.'
+                    : 'Définition enregistrée pour ce service.'}
+                </p>
+                <div className="flex items-center gap-3">
+                  {composeMsg && <span className="text-xs text-stone-300">{composeMsg}</span>}
+                  <button
+                    onClick={saveCompose}
+                    disabled={composeSaving || composeApplying}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2E2A27] hover:bg-[#3a3531] text-sm font-medium disabled:opacity-50 transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    {composeSaving ? 'Enregistrement...' : 'Enregistrer'}
+                  </button>
+                  <button
+                    onClick={applyCompose}
+                    disabled={
+                      composeSaving ||
+                      composeApplying ||
+                      composeValidating ||
+                      (composeValidation !== null && !composeValidation.valid) ||
+                      ((composeValidation?.services.length ?? 0) > 1 && !applyService)
+                    }
+                    title={
+                      composeValidation && !composeValidation.valid
+                        ? 'Corrigez les erreurs de validation avant d’appliquer'
+                        : 'Enregistrer puis recréer le conteneur (rollback automatique)'
+                    }
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 transition-colors"
+                  >
+                    <Rocket className={`w-4 h-4 ${composeApplying ? 'animate-pulse' : ''}`} />
+                    {composeApplying ? 'Application...' : 'Enregistrer et Appliquer'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

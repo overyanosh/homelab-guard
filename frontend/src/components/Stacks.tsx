@@ -333,9 +333,9 @@ export function StackEditor({
   const invalid = validation !== null && !validation.valid;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-3xl bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
-        <div className="flex flex-wrap items-center gap-3 p-4 border-b border-[#2E2A27]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col bg-[#1C1A18] rounded-xl border border-[#2E2A27] shadow-2xl">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 p-4 border-b border-[#2E2A27]">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-orange-500" />
             <h3 className="text-lg font-semibold text-stone-100">Stack</h3>
@@ -357,7 +357,7 @@ export function StackEditor({
           </button>
         </div>
 
-        <div className="p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="flex items-center gap-1 mb-3 border-b border-[#2E2A27]">
             <button
               onClick={() => setTab('compose')}
@@ -401,10 +401,17 @@ export function StackEditor({
             <CodeEditor
               value={yamlDoc}
               onChange={setYamlDoc}
+              height="min(38vh, 420px)"
               errorLines={(validation?.errors ?? []).map((e) => e.line ?? 0).filter((n) => n > 0)}
             />
           ) : (
-            <CodeEditor value={env} onChange={setEnv} placeholder="CLE=VALEUR" tone="env" />
+            <CodeEditor
+              value={env}
+              onChange={setEnv}
+              placeholder="CLE=VALEUR"
+              tone="env"
+              height="min(38vh, 420px)"
+            />
           )}
 
           <ComposeValidationPanel
@@ -415,27 +422,6 @@ export function StackEditor({
             onEnvUsed={() => setEnvExists(true)}
           />
 
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-xs text-stone-500">
-              Chaque service devient un conteneur, étiqueté <code className="font-mono">guard.stack</code>.
-            </p>
-            <div className="flex items-center gap-3">
-              {msg && <span className="text-xs text-red-300">{msg}</span>}
-              <button
-                onClick={deploy}
-                disabled={deploying || validating || invalid || !name.trim()}
-                title={invalid ? 'Corrigez les erreurs de validation avant de déployer' : 'Déployer la stack'}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {deploying ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Rocket className="w-4 h-4" />
-                )}
-                {deploying ? 'Déploiement...' : 'Déployer la stack'}
-              </button>
-            </div>
-          </div>
 
           {results && (
             <div className="mt-3 rounded-lg border border-[#2E2A27] bg-[#121110] p-3 text-xs">
@@ -465,6 +451,28 @@ export function StackEditor({
               </ul>
             </div>
           )}
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#2E2A27] p-4">
+          <p className="text-xs text-stone-500">
+            Chaque service devient un conteneur, étiqueté <code className="font-mono">guard.stack</code>.
+          </p>
+          <div className="flex items-center gap-3">
+            {msg && <span className="text-xs text-red-300">{msg}</span>}
+            <button
+              onClick={deploy}
+              disabled={deploying || validating || invalid || !name.trim()}
+              title={invalid ? 'Corrigez les erreurs de validation avant de déployer' : 'Déployer la stack'}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {deploying ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Rocket className="w-4 h-4" />
+              )}
+              {deploying ? 'Déploiement...' : 'Déployer la stack'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
