@@ -1,5 +1,38 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.13 (2026-11-27)
+
+### 🏷 Labels `guard.*` ajoutés au compose de Homelab Guard
+
+Le compose de Homelab Guard déclare désormais ses propres labels de gestion,
+dans `deploy/docker-compose.yml`, `deploy/docker-compose-podman.yml` **et** dans
+le compose stocké (modale Compose du conteneur `homelab-guard`) :
+
+```yaml
+    labels:
+      guard.enable: "true"
+      guard.group: "platform"
+      guard.update.mode: "notify"
+      guard.update.schedule: "0 4 * * *"
+      guard.test.strategy: "healthcheck"
+      guard.test.timeout: "120s"
+      guard.ai.context: "Console Homelab Guard : API/UI sur 9015 + worker IA sur 8001."
+      guard.backup.pre-update: "false"
+```
+
+- `notify` : les mises à jour sont **signalées** mais jamais appliquées
+  automatiquement au conteneur qui sert l'interface.
+- `healthcheck` : l'image ne déclarant pas de `HEALTHCHECK`, le moteur retombe
+  proprement sur son contrôle « conteneur stable » après 5 s.
+- Vérifié : un conteneur créé avec ces labels est bien lu comme
+  `enabled=true, group=platform, mode=notify, schedule=0 4 * * *,
+  strategy=healthcheck, timeout=120s`.
+
+**À noter** : les labels ne seront actifs sur le conteneur `homelab-guard` qu'au
+prochain **redémarrage/recréation** (l'auto-application est refusée par
+l'interface pour ne pas couper le service). Le build local a été mis à jour,
+`Test` n'a **pas** été publié (à la demande).
+
 ## Version 0.9.12 (2026-11-27)
 
 ### 🧹 Variables OIDC en commentaire + validateur corrigé

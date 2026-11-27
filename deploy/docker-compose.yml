@@ -14,6 +14,15 @@ services:
       - label=disable
     ports:
       - "9015:9015"
+    labels:
+      guard.enable: "true"
+      guard.group: "platform"
+      guard.update.mode: "notify"
+      guard.update.schedule: "0 4 * * *"
+      guard.test.strategy: "healthcheck"
+      guard.test.timeout: "120s"
+      guard.ai.context: "Console Homelab Guard : API/UI sur 9015 + worker IA sur 8001."
+      guard.backup.pre-update: "false"
     environment:
       - TZ=Europe/Paris
       - MASTER_KEY=${MASTER_KEY}
