@@ -1,5 +1,40 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.7 (2026-11-27)
+
+### 🔒 Sécurité : dépendances mises à jour (Dependabot / govulncheck)
+
+**22 alertes Dependabot** étaient ouvertes sur `backend/go.mod`.
+
+| Paquet | Avant | Après | Alertes résolues |
+|---|---|---|---|
+| `golang.org/x/crypto` | v0.29.0 | **v0.59.0** | 17 (dont 9 critiques, 2 hautes) |
+| `github.com/gorilla/websocket` | v1.5.3 | **v1.5.4-0.20240701034025-d67f41855da4** | 1 (GO-2026-6278, PRNG faible) |
+| `github.com/docker/docker` | v27.3.1+incompatible | **v28.5.2+incompatible** | 1 (GHSA-4vq8-7jfc-9cvp) |
+
+- `govulncheck ./...` : **0 vulnérabilité atteignable** dans notre code
+  (avant : GO-2026-6278 via `websocket`).
+- Client Docker v28 validé contre le socket Podman : conteneurs, inspect,
+  compose, logs, images, volumes, réseaux, stacks, start/stop/pause/unpause.
+
+### ⚠️ Alertes restantes (sans correctif publié)
+
+4 alertes `github.com/docker/docker` n'ont **aucune version corrigée**
+disponible (`patched: null`) ; la 5ᵉ exigerait `>= 29.3.1`, non publié comme
+module Go (le module s'arrête à `v28.5.2+incompatible`).
+
+Elles concernent des points du **démon** (`docker cp`, `PUT /containers/{id}/archive`,
+validation de privilèges des plugins), pas le client que nous utilisons.
+Exposition actuelle limitée : Homelab Guard parle à un **socket Podman local**
+et n'expose aucun de ces endpoints.
+
+### 📋 Couverture du graphe de dépendances
+
+- Frontend : **pas de `package-lock.json`** → npm n'est pas analysé par
+  Dependabot. À ajouter pour activer le suivi.
+- `ai-worker/requirements.txt` : versions **non figées** → analyse pip peu
+  pertinente. À épingler (`pip-audit`).
+
 ## Version 0.9.6 (2026-11-27)
 
 ### 🐛 Pages blanches (Réglages Proxmox, Réglages SSH)
