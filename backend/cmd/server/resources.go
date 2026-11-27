@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
+	"github.com/overyanosh/homelab-guard/backend/internal/ctrinfo"
 )
 
 // NetworkInfo is the UI-facing view of a container network.
@@ -344,7 +345,7 @@ func networkUsage(ctx context.Context, dockerCli *client.Client) map[string][]st
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
 		}
-		for _, net := range containerNetworkNames(insp) {
+		for _, net := range ctrinfo.NetworkNames(insp) {
 			usage[net] = append(usage[net], name)
 		}
 	}

@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
+	"github.com/overyanosh/homelab-guard/backend/internal/ctrinfo"
 	"github.com/overyanosh/homelab-guard/backend/internal/labels"
 	"github.com/overyanosh/homelab-guard/backend/internal/updater"
 )
@@ -40,6 +42,8 @@ func main() {
 	if serverURL == "" || enrollToken == "" {
 		log.Fatal("GUARD_SERVER_URL and GUARD_ENROLL_TOKEN are required")
 	}
+
+	wsURL := normalizeServerURL(serverURL)
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -67,7 +71,7 @@ func main() {
 			log.Println("Shutting down homelab-guard-agent")
 			return
 		default:
-			if err := runSession(ctx, dialer, serverURL, enrollToken, dockerCli, engine); err != nil {
+			if err := runSession(ctx, dialer, wsURL, enrollToken, dockerCli, engine); err != nil {
 				log.Printf("Connection lost (%v), reconnecting in 5s...", err)
 				time.Sleep(5 * time.Second)
 			}
@@ -101,6 +105,24 @@ func buildMTLSConfig() (*tls.Config, error) {
 		tlsCfg.RootCAs = pool
 	}
 	return tlsCfg, nil
+}
+
+// normalizeServerURL accepts http(s)://, ws(s):// or a bare host and returns a
+// websocket base URL. The UI generates http(s) URLs, so this keeps both forms
+// working instead of failing with "malformed ws or wss URL".
+func normalizeServerURL(raw string) string {
+	u := strings.TrimSpace(raw)
+	u = strings.TrimSuffix(u, "/")
+	switch {
+	case strings.HasPrefix(u, "https://"):
+		return "wss://" + strings.TrimPrefix(u, "https://")
+	case strings.HasPrefix(u, "http://"):
+		return "ws://" + strings.TrimPrefix(u, "http://")
+	case strings.HasPrefix(u, "wss://"), strings.HasPrefix(u, "ws://"):
+		return u
+	default:
+		return "ws://" + u
+	}
 }
 
 func runSession(ctx context.Context, dialer websocket.Dialer, serverURL, token string, dockerCli *client.Client, engine *updater.Engine) error {
@@ -174,23 +196,33 @@ func handleCommand(ctx context.Context, ws *websocket.Conn, dockerCli *client.Cl
 			break
 		}
 		type summary struct {
-			ID     string             `json:"id"`
-			Names  []string           `json:"names"`
-			Image  string             `json:"image"`
-			State  string             `json:"state"`
-			Status string             `json:"status"`
-			Guard  labels.GuardConfig `json:"guard"`
+			ID       string             `json:"id"`
+			Names    []string           `json:"names"`
+			Image    string             `json:"image"`
+			State    string             `json:"state"`
+			Status   string             `json:"status"`
+			Runtime  string             `json:"runtime"`
+			Networks []string           `json:"networks"`
+			Ports    []string           `json:"ports"`
+			Guard    labels.GuardConfig `json:"guard"`
 		}
+		runtimeName := ctrinfo.RuntimeName(dockerCli)
 		out := make([]summary, 0, len(list))
 		for _, c := range list {
-			out = append(out, summary{
-				ID:     c.ID[:12],
-				Names:  c.Names,
-				Image:  c.Image,
-				State:  c.State,
-				Status: c.Status,
-				Guard:  labels.ParseDockerLabels(c.Labels),
-			})
+			item := summary{
+				ID:      ctrinfo.ShortID(c.ID),
+				Names:   c.Names,
+				Image:   c.Image,
+				State:   c.State,
+				Status:  c.Status,
+				Runtime: runtimeName,
+				Guard:   labels.ParseDockerLabels(c.Labels),
+			}
+			if insp, err := dockerCli.ContainerInspect(ctx, c.ID); err == nil {
+				item.Networks = ctrinfo.NetworkNames(insp)
+				item.Ports = ctrinfo.PortNames(insp)
+			}
+			out = append(out, item)
 		}
 		respPayload = out
 

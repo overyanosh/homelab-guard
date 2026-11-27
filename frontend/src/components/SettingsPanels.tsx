@@ -86,7 +86,7 @@ interface CreatedAgent {
   serverUrl: string;
 }
 
-const isLocal = (name: string) => name.toLowerCase().includes('local');
+const isLocal = (name: string) => name.trim() === 'Local Host';
 
 export function DockerSettings() {
   const [nodes, setNodes] = useState<AgentNode[]>([]);

@@ -1,5 +1,43 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.17 (2026-11-27)
+
+### 🔌 Agents distants : correctifs et affichage dans l'UI
+
+**Pourquoi `dockerbay` n'apparaissait pas**
+
+1. L'agent exigeait une URL `ws://`/`wss://` alors que l'UI génère une URL
+   `http://` → boucle `malformed ws or wss URL`. L'agent **convertit maintenant
+   automatiquement** `http(s)://` → `ws(s)://` (ou accepte un hôte nu).
+2. Le **jeton d'enrôlement doit être créé sur l'instance cible** : un jeton
+   venant d'une autre instance est refusé (401) et l'agent boucle.
+3. L'UI **n'affichait pas du tout** les conteneurs des agents distants.
+
+**Nouveautés**
+
+- **Sélecteur de nœud** en haut de la page Podman/Docker : `Local Host` + chaque
+  agent, avec `●` en ligne / `(hors ligne)`.
+- Affichage des conteneurs de l'agent sélectionné, avec son état et un message
+  d'erreur explicite si l'agent est injoignable.
+- L'agent renvoie désormais **runtime, réseaux et ports** (nouveau paquet partagé
+  `internal/ctrinfo`, utilisé par le serveur *et* l'agent).
+- « Test & Update » fonctionne sur un agent distant ; cycle de vie, logs, compose
+  et suppression sont désactivés pour les agents distants (infobulle).
+
+**Correctif annexe** : la protection du nœud local bloquait la suppression de
+tout agent dont le nom contenait « local ». Détection désormais sur le **nom
+exact** `Local Host` (backend + UI).
+
+**Diagnostic**
+
+```bash
+docker logs homelab-guard-agent      # doit afficher "Connected to control plane"
+curl -s http://<serveur>:9015/api/nodes
+```
+
+Agent sur la même machine que le serveur (conteneurs séparés) :
+`http://host.containers.internal:9015` + `--add-host host.containers.internal:host-gateway`.
+
 ## Version 0.9.15 (2026-11-27)
 
 ### 🔧 Page Réseaux : utilisation réelle des réseaux

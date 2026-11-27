@@ -160,6 +160,10 @@ export default function App() {
   });
   const [resourceRefresh, setResourceRefresh] = useState(0);
   const [stackEditorOpen, setStackEditorOpen] = useState(false);
+  const [nodes, setNodes] = useState<{ id: number; name: string; online: boolean }[]>([]);
+  const [selectedNode, setSelectedNode] = useState<string>('local');
+  const [remoteContainers, setRemoteContainers] = useState<ContainerItem[]>([]);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const [serverVersion, setServerVersion] = useState<{ version: string; asset: string } | null>(null);
   const [staleBundle, setStaleBundle] = useState(false);
   const [auth, setAuth] = useState<{
@@ -237,6 +241,8 @@ export default function App() {
     }
   }, [sort]);
 
+  const isRemote = selectedNode !== 'local';
+
   const toggleSort = (key: ContainerSortKey) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
 
@@ -264,14 +270,15 @@ export default function App() {
           return '';
       }
     };
-    return [...containers].sort((a, b) => {
+    const source = selectedNode === 'local' ? containers : remoteContainers;
+    return [...source].sort((a, b) => {
       const va = valueOf(a);
       const vb = valueOf(b);
       if (va < vb) return -1 * factor;
       if (va > vb) return factor;
       return 0;
     });
-  }, [containers, sort, newerVersions]);
+  }, [containers, remoteContainers, selectedNode, sort, newerVersions]);
 
   const SortHeader = ({
     label,
@@ -299,6 +306,39 @@ export default function App() {
         </button>
       </th>
     );
+  };
+
+  const loadNodes = async () => {
+    try {
+      const res = await fetch('/api/nodes', { cache: 'no-store' });
+      if (res.ok) setNodes((await res.json()) ?? []);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadRemoteContainers = async (nodeID: string) => {
+    setRemoteError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/nodes/${nodeID}/containers`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setRemoteContainers(data);
+        } else {
+          setRemoteContainers([]);
+          setRemoteError(data?.error || 'réponse inattendue de l\'agent');
+        }
+      } else {
+        setRemoteContainers([]);
+        setRemoteError(await res.text());
+      }
+    } catch (err) {
+      setRemoteError(String(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadDocker = async () => {
@@ -649,7 +689,21 @@ export default function App() {
     loadDocker();
     loadProxmox();
     loadSshHosts();
+    loadNodes();
+    const timer = setInterval(loadNodes, 60000);
+    return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (selectedNode === 'local') {
+      loadDocker();
+    } else {
+      // Remote agents only expose containers; the other tabs are local-only.
+      setDockerTab('containers');
+      loadRemoteContainers(selectedNode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode]);
 
   // Optional OIDC gate: /auth/me tells whether a login page is required.
   useEffect(() => {
@@ -730,7 +784,11 @@ export default function App() {
   const triggerUpgrade = async (id: string) => {
     setLoading(true);
     setStatusBanner('Exécution du pipeline Sandbox & Non-Régression...');
-    const res = await fetch(`/api/docker/containers/${id}/upgrade?force=true`, { method: 'POST' });
+    const url =
+      selectedNode === 'local'
+        ? `/api/docker/containers/${id}/upgrade?force=true`
+        : `/api/nodes/${selectedNode}/containers/${id}/upgrade?force=true`;
+    const res = await fetch(url, { method: 'POST' });
     const data = await res.json();
     setStatusBanner(
       data.status === 'rolled-back'
@@ -738,7 +796,8 @@ export default function App() {
         : `Résultat (${data.container_name}) : ${data.status}`
     );
     setLoading(false);
-    loadDocker();
+    if (selectedNode === 'local') loadDocker();
+    else loadRemoteContainers(selectedNode);
   };
 
   const generateCompose = async () => {
@@ -894,11 +953,27 @@ export default function App() {
                 <div className="flex justify-between items-center mb-4">
                   <h1 className="text-xl font-semibold">Podman, Docker & Swarm</h1>
                   <div className="flex items-center gap-2">
+                    <select
+                      value={selectedNode}
+                      onChange={(e) => setSelectedNode(e.target.value)}
+                      title="Nœud dont on affiche les conteneurs"
+                      className="rounded-md border border-[#2E2A27] bg-[#121110] px-2 py-1.5 text-sm text-stone-200 focus:border-orange-500 focus:outline-none"
+                    >
+                      <option value="local">Local Host</option>
+                      {nodes
+                        .filter((n) => !n.name.toLowerCase().includes('local'))
+                        .map((n) => (
+                          <option key={n.id} value={String(n.id)}>
+                            {n.name} {n.online ? '●' : '(hors ligne)'}
+                          </option>
+                        ))}
+                    </select>
                     <button
                       onClick={() => {
                         setStackEditing(null);
                         setStackEditorOpen(true);
                       }}
+                      disabled={isRemote}
                       title="Déployer un compose multi-services (stack)"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-orange-500/60 text-orange-400 hover:bg-orange-500/15 text-sm font-medium transition-colors"
                     >
@@ -906,6 +981,7 @@ export default function App() {
                     </button>
                     <button
                       onClick={openCreate}
+                      disabled={isRemote}
                       title="Créer un conteneur simple à partir d'un compose (sans IA)"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium transition-colors"
                     >
@@ -930,6 +1006,7 @@ export default function App() {
                   </div>
                 </div>
 
+                {!isRemote && (
                 <nav className="flex flex-wrap items-center gap-1 mb-6 border-b border-[#2E2A27]">
                   {(
                     [
@@ -953,8 +1030,9 @@ export default function App() {
                     </button>
                   ))}
                 </nav>
+                )}
 
-                {(dockerTab === 'images' || dockerTab === 'volumes') && (
+                {!isRemote && (dockerTab === 'images' || dockerTab === 'volumes') && (
                   <DiskUsageBar refreshKey={resourceRefresh} />
                 )}
 
@@ -975,6 +1053,33 @@ export default function App() {
                 )}
                 {dockerTab === 'volumes' && (
                   <VolumesPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                )}
+
+                {dockerTab === 'containers' && selectedNode !== 'local' && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[#2E2A27] bg-[#1C1A18]/60 p-3 text-xs text-stone-400">
+                    <span className="font-medium text-stone-200">
+                      Agent distant : {nodes.find((n) => String(n.id) === selectedNode)?.name || selectedNode}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full ${
+                        nodes.find((n) => String(n.id) === selectedNode)?.online
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-red-500/15 text-red-400'
+                      }`}
+                    >
+                      {nodes.find((n) => String(n.id) === selectedNode)?.online ? 'en ligne' : 'hors ligne'}
+                    </span>
+                    <span className="text-stone-500">
+                      Cycle de vie et logs indisponibles pour un agent distant (Test &amp; Update reste actif).
+                    </span>
+                  </div>
+                )}
+
+                {dockerTab === 'containers' && remoteError && (
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-300">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <pre className="whitespace-pre-wrap font-sans">{remoteError}</pre>
+                  </div>
                 )}
 
                 {dockerTab === 'containers' && (
@@ -1028,8 +1133,9 @@ export default function App() {
                           <td className="p-3">
                             <button
                               onClick={() => openCompose(c.id)}
-                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors"
-                              title="Afficher / modifier le compose"
+                              disabled={isRemote}
+                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title={isRemote ? 'Indisponible pour un agent distant' : 'Afficher / modifier le compose'}
                             >
                               <FileCode className="w-3.5 h-3.5" />
                             </button>
@@ -1046,8 +1152,9 @@ export default function App() {
                           <td className="p-3">
                             <button
                               onClick={() => openLogs(c.id)}
-                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors"
-                              title="Voir les logs"
+                              disabled={isRemote}
+                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title={isRemote ? 'Indisponible pour un agent distant' : 'Voir les logs'}
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
@@ -1058,7 +1165,7 @@ export default function App() {
                                 onClick={() =>
                                   containerAction(c.id, c.state === 'paused' ? 'unpause' : 'start')
                                 }
-                                disabled={c.state === 'running' || c.state === 'restarting'}
+                                disabled={isRemote || c.state === 'running' || c.state === 'restarting'}
                                 title={c.state === 'paused' ? 'Reprendre' : 'Démarrer'}
                                 className="p-1.5 rounded bg-[#2E2A27] text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
@@ -1068,7 +1175,7 @@ export default function App() {
                                 onClick={() =>
                                   containerAction(c.id, c.state === 'paused' ? 'unpause' : 'pause')
                                 }
-                                disabled={c.state !== 'running' && c.state !== 'paused'}
+                                disabled={isRemote || c.state !== 'running' && c.state !== 'paused'}
                                 title={c.state === 'paused' ? 'Reprendre' : 'Suspendre'}
                                 className="p-1.5 rounded bg-[#2E2A27] text-orange-400 hover:bg-orange-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
@@ -1082,7 +1189,7 @@ export default function App() {
                                 onClick={() =>
                                   containerAction(c.id, 'stop')
                                 }
-                                disabled={c.state !== 'running' && c.state !== 'paused'}
+                                disabled={isRemote || c.state !== 'running' && c.state !== 'paused'}
                                 title="Arrêter"
                                 className="p-1.5 rounded bg-[#2E2A27] text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
@@ -1099,7 +1206,8 @@ export default function App() {
                                 onClick={() =>
                                   deleteContainer(c.id, (c.names[0] || '').replace(/^\//, ''))
                                 }
-                                title="Supprimer le conteneur"
+                                disabled={isRemote}
+                                title={isRemote ? 'Indisponible pour un agent distant' : 'Supprimer le conteneur'}
                                 className="p-1.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

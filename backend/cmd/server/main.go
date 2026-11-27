@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/overyanosh/homelab-guard/backend/internal/agenthub"
 	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
+	"github.com/overyanosh/homelab-guard/backend/internal/ctrinfo"
 	"github.com/overyanosh/homelab-guard/backend/internal/labels"
 	"github.com/overyanosh/homelab-guard/backend/internal/oidc"
 	"github.com/overyanosh/homelab-guard/backend/internal/proxmox"
@@ -42,62 +43,7 @@ type ContainerSummary struct {
 	Guard    labels.GuardConfig `json:"guard"`
 }
 
-// containerNetworkNames returns the networks a container is attached to. With
-// rootless Podman the Docker-compatible API leaves NetworkSettings.Networks
-// empty, so the network mode (pasta, bridge, host, custom network, ...) is used
-// as the network identifier instead.
-func containerNetworkNames(insp dockertypes.ContainerJSON) []string {
-	names := []string{}
-	if insp.NetworkSettings != nil {
-		for name := range insp.NetworkSettings.Networks {
-			names = append(names, name)
-		}
-	}
-	if len(names) == 0 && insp.HostConfig != nil {
-		if mode := strings.TrimSpace(string(insp.HostConfig.NetworkMode)); mode != "" {
-			names = append(names, mode)
-		}
-	}
-	sort.Strings(names)
-	return names
-}
 
-// containerPortNames returns human-readable port mappings, e.g. "8080:80/tcp"
-// for published ports and "9015/tcp" for merely exposed ones.
-func containerPortNames(insp dockertypes.ContainerJSON) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	add := func(s string) {
-		if s != "" && !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-
-	if insp.NetworkSettings != nil {
-		for port, bindings := range insp.NetworkSettings.Ports {
-			if len(bindings) == 0 {
-				add(port.Port() + "/" + port.Proto())
-				continue
-			}
-			for _, b := range bindings {
-				if b.HostPort != "" {
-					add(b.HostPort + ":" + port.Port() + "/" + port.Proto())
-					seen[port.Port()+"/"+port.Proto()] = true // published: hide bare form
-				} else {
-					add(port.Port() + "/" + port.Proto())
-				}
-			}
-		}
-	}
-	if insp.Config != nil {
-		for port := range insp.Config.ExposedPorts {
-			add(port.Port() + "/" + port.Proto())
-		}
-	}
-	sort.Strings(out)
-	return out
-}
 
 // New type for update check response
 type UpdateCheckResult struct {
@@ -109,7 +55,7 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 // appVersion is surfaced by /api/health and /api/version.
-const appVersion = "0.9.15"
+const appVersion = "0.9.17"
 
 var startedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -129,7 +75,7 @@ func main() {
 		log.Fatalf("Docker client error: %v", err)
 	}
 
-	runtimeName := detectRuntimeName(dockerCli)
+	runtimeName := ctrinfo.RuntimeName(dockerCli)
 	log.Printf("Container engine detected: %s", runtimeName)
 
 	// Optional OIDC login gate, enabled only when OIDC_ISSUER/OIDC_CLIENT_ID are set.
@@ -226,7 +172,7 @@ func main() {
 		for _, n := range nodes {
 			item := nodeStatus{AgentNode: n}
 			// Mark "Local Host" as always online since it's self-managing
-			if strings.Contains(n.Name, "Local") {
+			if strings.TrimSpace(n.Name) == "Local Host" {
 				item.Online = true
 				hb := agenthub.NodeHeartbeat{
 					Hostname:      "localhost",
@@ -321,11 +267,11 @@ func main() {
 			networks := []string{}
 			ports := []string{}
 			if insp, err := dockerCli.ContainerInspect(r.Context(), c.ID); err == nil {
-				networks = containerNetworkNames(insp)
-				ports = containerPortNames(insp)
+				networks = ctrinfo.NetworkNames(insp)
+				ports = ctrinfo.PortNames(insp)
 			}
 			res = append(res, ContainerSummary{
-				ID:       c.ID[:12],
+				ID:       ctrinfo.ShortID(c.ID),
 				Names:    c.Names,
 				Image:    c.Image,
 				State:    c.State,
@@ -435,7 +381,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		if self, err := os.Hostname(); err == nil && self != "" && strings.HasPrefix(insp.ID, self) {
+		if isSelfContainer(insp.ID) {
 			http.Error(w, fmt.Sprintf("action « %s » refusée sur le conteneur Homelab Guard lui-même", name), http.StatusConflict)
 			return
 		}
@@ -479,7 +425,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		if self, err := os.Hostname(); err == nil && self != "" && strings.HasPrefix(insp.ID, self) {
+		if isSelfContainer(insp.ID) {
 			http.Error(w, "impossible de supprimer le conteneur Homelab Guard lui-même", http.StatusConflict)
 			return
 		}
@@ -891,35 +837,11 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-// detectRuntimeName identifies the container engine behind the Docker-compatible
-// socket. Podman reports a "Podman Engine" component in /version, while Docker
-// reports "Engine"/"Docker Engine".
-func detectRuntimeName(dockerCli *client.Client) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
-	if v, err := dockerCli.ServerVersion(ctx); err == nil {
-		for _, c := range v.Components {
-			if strings.Contains(strings.ToLower(c.Name), "podman") {
-				return "podman"
-			}
-		}
-		if strings.Contains(strings.ToLower(v.Platform.Name), "podman") {
-			return "podman"
-		}
-		for _, c := range v.Components {
-			if strings.Contains(strings.ToLower(c.Name), "engine") {
-				return "docker"
-			}
-		}
-	}
-	if info, err := dockerCli.Info(ctx); err == nil {
-		hay := strings.ToLower(info.Name + " " + info.OperatingSystem + " " + info.ServerVersion)
-		if strings.Contains(hay, "podman") {
-			return "podman"
-		}
-	}
-	return "docker"
+// isSelfContainer reports whether id is the container running this process.
+func isSelfContainer(id string) bool {
+	self, err := os.Hostname()
+	return err == nil && self != "" && strings.HasPrefix(id, self)
 }
 
 // isNoisyLabel filters labels added by build tools and base images, which are

@@ -291,7 +291,7 @@ func (s *Store) ListProxmoxClusters() ([]ProxmoxCluster, error) {
 // DeleteAgentNode removes a remote agent node. The self-registered local agent
 // (name containing "Local") is protected and can never be deleted.
 func (s *Store) DeleteAgentNode(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM agent_nodes WHERE id = ? AND name NOT LIKE '%Local%'`, id)
+	res, err := s.db.Exec(`DELETE FROM agent_nodes WHERE id = ? AND name <> 'Local Host'`, id)
 	if err != nil {
 		return err
 	}

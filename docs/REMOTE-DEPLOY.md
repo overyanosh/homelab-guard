@@ -52,6 +52,35 @@ Résultat :
 - réseaux multiples correctement détectés (`['ai', 'proxy']`)
 - « Local Host » enregistré et en ligne
 
+## URL du serveur (piège classique)
+
+`GUARD_SERVER_URL` accepte indifféremment :
+
+| Forme | Exemple |
+|---|---|
+| http(s) (converti automatiquement en ws(s)) | `http://192.168.0.6:9015` |
+| websocket explicite | `ws://192.168.0.6:9015` |
+| hôte nu (ws par défaut) | `192.168.0.6:9015` |
+
+Si l'agent tourne **sur la même machine** que le serveur (conteneurs séparés),
+utilisez la passerelle de l'hôte :
+
+```bash
+docker run ... --add-host host.containers.internal:host-gateway \
+  -e GUARD_SERVER_URL=http://host.containers.internal:9015 ...
+```
+
+### Vérifier qu'un agent se connecte
+
+```bash
+docker logs homelab-guard-agent          # doit afficher "Connected to control plane"
+curl -s http://<serveur>:9015/api/nodes  # le nœud doit être online:true
+```
+
+Le **jeton d'enrôlement doit être créé sur l'instance cible** (celle qui doit
+recevoir l'agent) : un jeton généré sur une autre instance est refusé
+(`401 unauthorized agent token`).
+
 ## Notes d'exploitation
 
 - Le conteneur tourne avec `--user 0:0` : le socket Docker du NAS est
