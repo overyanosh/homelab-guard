@@ -19,16 +19,20 @@ import (
 
 // NetworkInfo is the UI-facing view of a container network.
 type NetworkInfo struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	Driver     string            `json:"driver"`
-	Scope      string            `json:"scope"`
-	Internal   bool              `json:"internal"`
-	Attachable bool              `json:"attachable"`
-	Created    string            `json:"created"`
-	Containers int               `json:"containers"`
-	InUse      bool              `json:"in_use"`
-	Labels     map[string]string `json:"labels,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	Driver         string            `json:"driver"`
+	Scope          string            `json:"scope"`
+	Internal       bool              `json:"internal"`
+	Attachable     bool              `json:"attachable"`
+	Created        string            `json:"created"`
+	Containers     int               `json:"containers"`
+	InUse          bool              `json:"in_use"`
+	ContainerNames []string          `json:"container_names,omitempty"`
+	// Virtual entries represent network modes (pasta, host, none, custom mode)
+	// that are used by containers but have no network object to manage.
+	Virtual bool              `json:"virtual,omitempty"`
+	Labels  map[string]string `json:"labels,omitempty"`
 }
 
 // ImageInfo is the UI-facing view of a local image.
@@ -77,22 +81,59 @@ func registerResourceRoutes(mux *http.ServeMux, dockerCli *client.Client) {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
+
+		// NetworkList.Containers is unreliable (empty with Podman, not always
+		// populated by Docker), so usage is derived from container inspections —
+		// the same source as the containers table.
+		usage := networkUsage(r.Context(), dockerCli)
+
 		out := make([]NetworkInfo, 0, len(nets))
+		known := map[string]bool{}
 		for _, n := range nets {
+			known[n.Name] = true
+			names := usage[n.Name]
+			count := len(names)
+			if len(n.Containers) > count {
+				count = len(n.Containers)
+			}
 			out = append(out, NetworkInfo{
-				ID:         n.ID,
-				Name:       n.Name,
-				Driver:     n.Driver,
-				Scope:      n.Scope,
-				Internal:   n.Internal,
-				Attachable: n.Attachable,
-				Created:    n.Created.Format("2006-01-02T15:04:05Z07:00"),
-				Containers: len(n.Containers),
-				InUse:      len(n.Containers) > 0,
-				Labels:     n.Labels,
+				ID:             n.ID,
+				Name:           n.Name,
+				Driver:         n.Driver,
+				Scope:          n.Scope,
+				Internal:       n.Internal,
+				Attachable:     n.Attachable,
+				Created:        n.Created.Format("2006-01-02T15:04:05Z07:00"),
+				Containers:     count,
+				InUse:          count > 0,
+				ContainerNames: names,
+				Labels:         n.Labels,
 			})
 		}
-		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+
+		// Network modes in use but absent from NetworkList (rootless Podman uses
+		// "pasta", "slirp4netns", "host", "none", or a custom network name).
+		for name, names := range usage {
+			if known[name] {
+				continue
+			}
+			out = append(out, NetworkInfo{
+				Name:           name,
+				Driver:         "mode",
+				Scope:          "local",
+				Containers:     len(names),
+				InUse:          true,
+				ContainerNames: names,
+				Virtual:        true,
+			})
+		}
+
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].InUse != out[j].InUse {
+				return out[i].InUse
+			}
+			return out[i].Name < out[j].Name
+		})
 		writeJSON(w, http.StatusOK, out)
 	})
 
@@ -285,6 +326,32 @@ func pruneUnusedImages(ctx context.Context, dockerCli *client.Client) ([]string,
 		reclaimed = 0
 	}
 	return deleted, reclaimed
+}
+
+// networkUsage maps each network (or network mode) to the containers using it.
+func networkUsage(ctx context.Context, dockerCli *client.Client) map[string][]string {
+	usage := map[string][]string{}
+	list, err := dockerCli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return usage
+	}
+	for _, c := range list {
+		insp, err := dockerCli.ContainerInspect(ctx, c.ID)
+		if err != nil {
+			continue
+		}
+		name := ""
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		for _, net := range containerNetworkNames(insp) {
+			usage[net] = append(usage[net], name)
+		}
+	}
+	for _, names := range usage {
+		sort.Strings(names)
+	}
+	return usage
 }
 
 // listImages returns images annotated with whether a container uses them.

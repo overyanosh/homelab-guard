@@ -109,7 +109,7 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 // appVersion is surfaced by /api/health and /api/version.
-const appVersion = "0.9.14"
+const appVersion = "0.9.15"
 
 var startedAt = time.Now().UTC().Format(time.RFC3339)
 

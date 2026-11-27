@@ -1,5 +1,28 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.15 (2026-11-27)
+
+### 🔧 Page Réseaux : utilisation réelle des réseaux
+
+La colonne « Conteneurs » affichait **0 / inutilisé** pour tous les réseaux,
+alors que des conteneurs les utilisent (`proxy`, `ai`, `arr_default`…).
+
+**Cause** : l'usage était lu dans `NetworkList.Containers`, champ vide avec
+Podman et non fiable avec Docker.
+
+**Correctif** : l'usage est calculé par **inspection des conteneurs** (même
+source que la colonne « Réseaux » du tableau) :
+
+- compteur exact + **infobulle listant les noms des conteneurs** ;
+- les réseaux réellement utilisés remontent en tête de liste ;
+- les **modes réseau** qui n'ont pas d'objet réseau (Podman rootless : `pasta`,
+  `slirp4netns`, `host`, `none`, réseau personnalisé) apparaissent comme
+  entrées **« mode réseau »** en lecture seule (suppression désactivée).
+
+Vérifié sur le NAS Docker : **25 réseaux, 18 utilisés** — `proxy` → **19
+conteneurs**, `arr_default` → 7, `ai` → 3, etc. Sur Podman : `pasta` (mode)
+utilisé par `homelab-guard`.
+
 ## Version 0.9.14 (2026-11-27)
 
 ### ↕ Tri des colonnes du tableau des conteneurs

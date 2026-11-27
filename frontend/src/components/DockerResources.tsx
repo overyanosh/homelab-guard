@@ -199,6 +199,8 @@ interface NetworkItem {
   created: string;
   containers: number;
   in_use: boolean;
+  container_names?: string[];
+  virtual?: boolean;
 }
 
 export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
@@ -377,10 +379,26 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
                         interne
                       </span>
                     )}
+                    {n.virtual && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-orange-500/15 text-orange-400">
+                        mode réseau
+                      </span>
+                    )}
                   </td>
                   <td className="p-3 font-mono text-xs text-stone-400">{n.driver}</td>
                   <td className="p-3 text-xs text-stone-400">{n.scope}</td>
-                  <td className="p-3 text-xs text-stone-300">{n.containers}</td>
+                  <td
+                    className="p-3 text-xs text-stone-300"
+                    title={n.container_names?.length ? n.container_names.join('\n') : undefined}
+                  >
+                    {n.containers > 0 ? (
+                      <span className="cursor-help underline decoration-dotted decoration-stone-600">
+                        {n.containers}
+                      </span>
+                    ) : (
+                      0
+                    )}
+                  </td>
                   <td className="p-3">
                     <span
                       className={`px-2 py-0.5 rounded-full text-xs ${
@@ -395,8 +413,14 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
                   <td className="p-3 text-right">
                     <button
                       onClick={() => remove(n)}
-                      disabled={n.in_use}
-                      title={n.in_use ? 'Réseau utilisé par un conteneur' : 'Supprimer'}
+                      disabled={n.in_use || n.virtual}
+                      title={
+                        n.virtual
+                          ? 'Mode réseau (non supprimable)'
+                          : n.in_use
+                          ? 'Réseau utilisé par un conteneur'
+                          : 'Supprimer'
+                      }
                       className={dangerBtn}
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Supprimer
