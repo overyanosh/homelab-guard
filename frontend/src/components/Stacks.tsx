@@ -56,9 +56,11 @@ interface StackItem {
 export function StacksPanel({
   refreshKey,
   onEdit,
+  base,
 }: {
   refreshKey: number;
   onEdit: (name: string) => void;
+  base: string;
 }) {
   const [stacks, setStacks] = useState<StackItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function StacksPanel({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/docker/stacks', { cache: 'no-store' });
+      const res = await fetch(`${base}/stacks`, { cache: 'no-store' });
       if (res.ok) setStacks((await res.json()) ?? []);
       else setError(await res.text());
     } catch (err) {
@@ -85,7 +87,7 @@ export function StacksPanel({
     setError(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/docker/stacks/${encodeURIComponent(name)}`, {
+      const res = await fetch(`${base}/stacks/${encodeURIComponent(name)}`, {
         method: 'DELETE',
       });
       const text = await res.text();
@@ -213,11 +215,13 @@ export function StackEditor({
   initialName,
   onClose,
   onDeployed,
+  base,
 }: {
   open: boolean;
   initialName: string | null;
   onClose: () => void;
   onDeployed: () => void;
+  base: string;
 }) {
   const [name, setName] = useState('');
   const [yamlDoc, setYamlDoc] = useState('');
@@ -248,7 +252,7 @@ export function StackEditor({
     }
     setName(initialName);
     (async () => {
-      const res = await fetch(`/api/docker/stacks/${encodeURIComponent(initialName)}`, {
+      const res = await fetch(`${base}/stacks/${encodeURIComponent(initialName)}`, {
         cache: 'no-store',
       });
       if (res.ok) {
@@ -299,7 +303,7 @@ export function StackEditor({
     setMsg(null);
     setResults(null);
     try {
-      const res = await fetch('/api/docker/stacks', {
+      const res = await fetch(`${base}/stacks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), yaml: yamlDoc, env: envExists ? env : '' }),

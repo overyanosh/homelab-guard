@@ -1,5 +1,45 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.23 (2026-11-27) — agent 0.9.22
+
+### 🌐 Contrôle total des agents distants (réseaux, images, volumes, compose, stacks)
+
+Les onglets **Réseaux / Images / Volumes / Stacks**, les boutons **Nouveau** et
+**Stacks**, et l'édition de **compose** fonctionnent désormais pour un agent
+distant : les opérations sont envoyées à l'agent par le hub WebSocket.
+
+**Nouvelles commandes agent** : `networks_list`, `network_create`,
+`network_remove`, `networks_prune`, `images_list`, `image_remove`,
+`images_prune`, `volumes_list`, `volume_create`, `volume_remove`,
+`volumes_prune`, `disk_usage`, `build_cache_prune`, `compose_get`,
+`compose_apply`, `container_create`, `stacks_list`, `stack_deploy`,
+`stack_remove`.
+
+**Nouveaux endpoints serveur** (miroir de `/api/docker/*`) :
+
+- `/api/nodes/{id}/networks[...]`, `/images[...]`, `/volumes[...]`,
+  `/disk-usage`, `/build-cache/prune`
+- `/api/nodes/{id}/containers/compose` (création), `/containers/{cid}/compose`
+  (GET/PUT), `/containers/{cid}/compose/apply`
+- `/api/nodes/{id}/stacks` (GET/POST), `/stacks/{name}` (GET/DELETE)
+
+**Stockage** : les définitions compose/.env des agents sont conservées côté
+serveur (clé `node<id>/…`), donc rechargeables depuis l'UI.
+
+**Refactor** : la logique Docker est centralisée dans `internal/dockerops` et la
+génération de compose dans `internal/composegen`, utilisées par le serveur **et**
+l'agent (mêmes données, même format).
+
+**UI** : toutes les vues sont paramétrées par le nœud sélectionné
+(`/api/docker/...` en local, `/api/nodes/{id}/...` pour un agent).
+
+Vérifié de bout en bout depuis le NAS vers `dockerbay` : 6 réseaux (5 utilisés),
+19 images (10 inutilisées), 3 volumes, 11 Go d'images / 6,1 Go récupérables,
+déploiement + suppression d'une stack, création et suppression d'un conteneur,
+lecture du compose généré.
+
+> Non publié sur GitHub (Test/latest) à la demande.
+
 ## Version 0.9.22 (2026-11-27)
 
 ### 🖱 Boutons distants réellement activés dans l'UI

@@ -393,3 +393,15 @@ func (s *Store) DeleteStack(name string) error {
 	_, err := s.db.Exec(`DELETE FROM stacks WHERE name = ?`, name)
 	return err
 }
+
+// DeleteCompose removes a stored compose definition.
+func (s *Store) DeleteCompose(service string) error {
+	_, err := s.db.Exec(`DELETE FROM compose_files WHERE service = ?`, service)
+	return err
+}
+
+// DeleteComposeEnv removes a stored .env for a service.
+func (s *Store) DeleteComposeEnv(service string) error {
+	_, err := s.db.Exec(`DELETE FROM compose_env WHERE service = ?`, service)
+	return err
+}

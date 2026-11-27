@@ -75,7 +75,7 @@ interface DiskUsage {
   total_reclaim: number;
 }
 
-export function DiskUsageBar({ refreshKey }: { refreshKey: number }) {
+export function DiskUsageBar({ refreshKey, base }: { refreshKey: number; base: string }) {
   const [usage, setUsage] = useState<DiskUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export function DiskUsageBar({ refreshKey }: { refreshKey: number }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/docker/disk-usage');
+      const res = await fetch(`${base}/disk-usage`, { cache: 'no-store' });
       if (res.ok) setUsage(await res.json());
       else setError(await res.text());
     } catch (err) {
@@ -111,11 +111,11 @@ export function DiskUsageBar({ refreshKey }: { refreshKey: number }) {
     setSuccess(null);
     let reclaimed = 0;
     try {
-      const images = await fetch('/api/docker/images/prune', { method: 'POST' });
+      const images = await fetch(`${base}/images/prune`, { method: 'POST' });
       if (images.ok) reclaimed += (await images.json()).space_reclaimed || 0;
-      const volumes = await fetch('/api/docker/volumes/prune', { method: 'POST' });
+      const volumes = await fetch(`${base}/volumes/prune`, { method: 'POST' });
       if (volumes.ok) reclaimed += (await volumes.json()).space_reclaimed || 0;
-      const cache = await fetch('/api/docker/build-cache/prune', { method: 'POST' });
+      const cache = await fetch(`${base}/build-cache/prune`, { method: 'POST' });
       if (cache.ok) {
         const data = await cache.json();
         if (data.supported === false) {
@@ -203,7 +203,7 @@ interface NetworkItem {
   virtual?: boolean;
 }
 
-export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
+export function NetworksPanel({ onChanged, base }: { onChanged: () => void; base: string }) {
   const [networks, setNetworks] = useState<NetworkItem[]>([]);
   const [form, setForm] = useState({ name: '', driver: 'bridge', internal: false, subnet: '' });
   const [loading, setLoading] = useState(false);
@@ -211,7 +211,7 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
   const [success, setSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/docker/networks');
+    const res = await fetch(`${base}/networks`, { cache: 'no-store' });
     if (res.ok) setNetworks((await res.json()) ?? []);
     else setError(await res.text());
   }, []);
@@ -226,7 +226,7 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch('/api/docker/networks', {
+      const res = await fetch(`${base}/networks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -248,7 +248,7 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
     if (!confirm(`Supprimer le réseau « ${n.name} » ?`)) return;
     setError(null);
     setSuccess(null);
-    const res = await fetch(`/api/docker/networks/${n.id}`, { method: 'DELETE' });
+    const res = await fetch(`${base}/networks/${n.id}`, { method: 'DELETE' });
     if (!res.ok) {
       setError(await res.text());
       return;
@@ -262,7 +262,7 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
     if (!confirm('Supprimer tous les réseaux non utilisés ?')) return;
     setError(null);
     setSuccess(null);
-    const res = await fetch('/api/docker/networks/prune', { method: 'POST' });
+    const res = await fetch(`${base}/networks/prune`, { method: 'POST' });
     if (!res.ok) {
       setError(await res.text());
       return;
@@ -451,7 +451,7 @@ interface ImageItem {
   containers: number;
 }
 
-export function ImagesPanel({ onChanged }: { onChanged: () => void }) {
+export function ImagesPanel({ onChanged, base }: { onChanged: () => void; base: string }) {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [onlyUnused, setOnlyUnused] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -459,7 +459,7 @@ export function ImagesPanel({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/docker/images');
+    const res = await fetch(`${base}/images`, { cache: 'no-store' });
     if (res.ok) setImages((await res.json()) ?? []);
     else setError(await res.text());
   }, []);
@@ -473,7 +473,7 @@ export function ImagesPanel({ onChanged }: { onChanged: () => void }) {
     if (!confirm(`Supprimer l'image « ${label} » (${formatBytes(img.size)}) ?`)) return;
     setError(null);
     setSuccess(null);
-    const res = await fetch(`/api/docker/images/${encodeURIComponent(img.id)}`, { method: 'DELETE' });
+    const res = await fetch(`${base}/images/${encodeURIComponent(img.id)}`, { method: 'DELETE' });
     if (!res.ok) {
       setError(await res.text());
       return;
@@ -488,7 +488,7 @@ export function ImagesPanel({ onChanged }: { onChanged: () => void }) {
     setBusy(true);
     setError(null);
     setSuccess(null);
-    const res = await fetch('/api/docker/images/prune', { method: 'POST' });
+    const res = await fetch(`${base}/images/prune`, { method: 'POST' });
     if (!res.ok) {
       setError(await res.text());
       setBusy(false);
@@ -631,7 +631,7 @@ interface VolumeItem {
   scope: string;
 }
 
-export function VolumesPanel({ onChanged }: { onChanged: () => void }) {
+export function VolumesPanel({ onChanged, base }: { onChanged: () => void; base: string }) {
   const [volumes, setVolumes] = useState<VolumeItem[]>([]);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -639,7 +639,7 @@ export function VolumesPanel({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/docker/volumes');
+    const res = await fetch(`${base}/volumes`, { cache: 'no-store' });
     if (res.ok) setVolumes((await res.json()) ?? []);
     else setError(await res.text());
   }, []);
@@ -654,7 +654,7 @@ export function VolumesPanel({ onChanged }: { onChanged: () => void }) {
     setSuccess(null);
     setBusy(true);
     try {
-      const res = await fetch('/api/docker/volumes', {
+      const res = await fetch(`${base}/volumes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim() }),
@@ -676,7 +676,7 @@ export function VolumesPanel({ onChanged }: { onChanged: () => void }) {
     if (!confirm(`Supprimer le volume « ${v.name} » (${formatBytes(v.size)}) ?\nLes données seront perdues.`)) return;
     setError(null);
     setSuccess(null);
-    const res = await fetch(`/api/docker/volumes/${encodeURIComponent(v.name)}?force=true`, {
+    const res = await fetch(`${base}/volumes/${encodeURIComponent(v.name)}?force=true`, {
       method: 'DELETE',
     });
     if (!res.ok) {
@@ -693,7 +693,7 @@ export function VolumesPanel({ onChanged }: { onChanged: () => void }) {
     setBusy(true);
     setError(null);
     setSuccess(null);
-    const res = await fetch('/api/docker/volumes/prune', { method: 'POST' });
+    const res = await fetch(`${base}/volumes/prune`, { method: 'POST' });
     if (!res.ok) {
       setError(await res.text());
       setBusy(false);

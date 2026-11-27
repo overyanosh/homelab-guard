@@ -6,9 +6,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,17 +16,20 @@ import (
 	"syscall"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/gorilla/websocket"
+	"github.com/overyanosh/homelab-guard/backend/internal/composegen"
 	"github.com/overyanosh/homelab-guard/backend/internal/ctrinfo"
+	"github.com/overyanosh/homelab-guard/backend/internal/dockerops"
 	"github.com/overyanosh/homelab-guard/backend/internal/labels"
 	"github.com/overyanosh/homelab-guard/backend/internal/updater"
 )
 
 // agentVersion is logged at startup so the deployed build can be identified.
-const agentVersion = "0.9.21"
+const agentVersion = "0.9.22"
 
 type AgentMessage struct {
 	Type      string          `json:"type"`
@@ -405,6 +408,225 @@ func handleCommand(ctx context.Context, ws *websocket.Conn, dockerCli *client.Cl
 		} else {
 			respPayload = map[string]string{"status": "ok"}
 		}
+
+	case "networks_list":
+		out, err := dockerops.Networks(ctx, dockerCli)
+		if err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = out
+		}
+
+	case "network_create":
+		var req dockerops.NetworkCreateRequest
+		_ = json.Unmarshal(msg.Payload, &req)
+		id, err := dockerops.CreateNetwork(ctx, dockerCli, req)
+		if err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]string{"id": id, "name": req.Name}
+		}
+
+	case "network_remove":
+		var req struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		if err := dockerops.RemoveNetwork(ctx, dockerCli, req.ID); err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]string{"status": "ok"}
+		}
+
+	case "networks_prune":
+		deleted, err := dockerops.PruneNetworks(ctx, dockerCli)
+		if err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]any{"deleted": deleted}
+		}
+
+	case "images_list":
+		respPayload = dockerops.Images(ctx, dockerCli)
+
+	case "image_remove":
+		var req struct {
+			ID    string `json:"id"`
+			Force bool   `json:"force"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		if err := dockerops.RemoveImage(ctx, dockerCli, req.ID, req.Force); err != nil {
+			respPayload = map[string]string{"error": err.Error()}
+		} else {
+			respPayload = map[string]string{"status": "ok"}
+		}
+
+	case "images_prune":
+		deleted, reclaimed := dockerops.PruneImages(ctx, dockerCli)
+		respPayload = map[string]any{"deleted": deleted, "space_reclaimed": reclaimed}
+
+	case "volumes_list":
+		respPayload = dockerops.Volumes(ctx, dockerCli)
+
+	case "volume_create":
+		var req struct {
+			Name   string `json:"name"`
+			Driver string `json:"driver"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		if err := dockerops.CreateVolume(ctx, dockerCli, req.Name, req.Driver); err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]string{"name": req.Name}
+		}
+
+	case "volume_remove":
+		var req struct {
+			Name  string `json:"name"`
+			Force bool   `json:"force"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		if err := dockerops.RemoveVolume(ctx, dockerCli, req.Name, req.Force); err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]string{"status": "ok"}
+		}
+
+	case "volumes_prune":
+		deleted, reclaimed := dockerops.PruneVolumes(ctx, dockerCli)
+		respPayload = map[string]any{"deleted": deleted, "space_reclaimed": reclaimed}
+
+	case "disk_usage":
+		respPayload = dockerops.DiskUsage(ctx, dockerCli)
+
+	case "build_cache_prune":
+		report, err := dockerCli.BuildCachePrune(ctx, dockerTypes.BuildCachePruneOptions{All: true})
+		if err != nil {
+			respPayload = map[string]any{"supported": false, "space_reclaimed": 0, "message": err.Error()}
+		} else {
+			respPayload = map[string]any{"supported": true, "space_reclaimed": report.SpaceReclaimed}
+		}
+
+	case "compose_get":
+		var req struct {
+			ContainerID string `json:"container_id"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		insp, err := dockerCli.ContainerInspect(ctx, req.ContainerID)
+		if err != nil {
+			respPayload = map[string]string{"error": err.Error()}
+			break
+		}
+		service := strings.TrimPrefix(insp.Name, "/")
+		generated := composegen.FromInspect(insp)
+		env := composegen.DetectEnvFile(insp)
+		respPayload = map[string]any{
+			"service":    service,
+			"yaml":       generated,
+			"source":     "generated",
+			"env":        env,
+			"env_exists": strings.TrimSpace(env) != "",
+		}
+
+	case "compose_apply":
+		var req struct {
+			ContainerID string `json:"container_id"`
+			Service     string `json:"service"`
+			YAML        string `json:"yaml"`
+			Env         string `json:"env"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		res, err := engine.ApplyCompose(ctx, req.ContainerID, req.Service, req.YAML, req.Env)
+		if err != nil {
+			respPayload = map[string]string{"error": err.Error()}
+		} else {
+			respPayload = res
+		}
+
+	case "container_create":
+		var req struct {
+			Name    string `json:"name"`
+			Service string `json:"service"`
+			YAML    string `json:"yaml"`
+			Env     string `json:"env"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		res, err := engine.CreateFromCompose(ctx, req.Name, req.Service, req.YAML, req.Env)
+		if err != nil {
+			respPayload = map[string]string{"error": err.Error()}
+		} else {
+			respPayload = res
+		}
+
+	case "stacks_list":
+		list, err := dockerCli.ContainerList(ctx, container.ListOptions{All: true})
+		if err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+			break
+		}
+		type svc struct {
+			Service       string `json:"service"`
+			ContainerName string `json:"container_name"`
+			State         string `json:"state"`
+		}
+		type stack struct {
+			Name     string `json:"name"`
+			Services []svc  `json:"services"`
+			Total    int    `json:"total"`
+			Running  int    `json:"running"`
+		}
+		byName := map[string]*stack{}
+		for _, c := range list {
+			name := strings.TrimSpace(c.Labels["guard.stack"])
+			if name == "" {
+				continue
+			}
+			st, ok := byName[name]
+			if !ok {
+				st = &stack{Name: name}
+				byName[name] = st
+			}
+			service := c.Labels["guard.service"]
+			if service == "" && len(c.Names) > 0 {
+				service = strings.TrimPrefix(c.Names[0], "/")
+			}
+			containerName := ""
+			if len(c.Names) > 0 {
+				containerName = strings.TrimPrefix(c.Names[0], "/")
+			}
+			st.Services = append(st.Services, svc{Service: service, ContainerName: containerName, State: c.State})
+			st.Total++
+			if c.State == "running" {
+				st.Running++
+			}
+		}
+		out := make([]*stack, 0, len(byName))
+		for _, st := range byName {
+			out = append(out, st)
+		}
+		respPayload = out
+
+	case "stack_deploy":
+		var req struct {
+			Name string `json:"name"`
+			YAML string `json:"yaml"`
+			Env  string `json:"env"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		results, err := engine.DeployStack(ctx, req.Name, req.YAML, req.Env)
+		if err != nil {
+			respPayload = map[string]string{"error": err.Error()}
+		} else {
+			respPayload = map[string]any{"stack": req.Name, "services": results}
+		}
+
+	case "stack_remove":
+		var req struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		removed, failed := engine.RemoveStack(ctx, req.Name)
+		respPayload = map[string]any{"stack": req.Name, "removed": removed, "failed": failed}
 	}
 
 	raw, _ := json.Marshal(respPayload)

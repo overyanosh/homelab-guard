@@ -242,6 +242,7 @@ export default function App() {
   }, [sort]);
 
   const isRemote = selectedNode !== 'local';
+  const nodeBase = isRemote ? `/api/nodes/${selectedNode}` : '/api/docker';
 
   const toggleSort = (key: ContainerSortKey) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
@@ -456,7 +457,7 @@ export default function App() {
     setCreateMsg(null);
     setCreateResult(null);
     try {
-      const res = await fetch('/api/docker/containers/compose', {
+      const res = await fetch(`${nodeBase}/containers/compose`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -578,7 +579,7 @@ export default function App() {
     setComposeTab('compose');
     setComposeApplyResult(null);
     try {
-      const res = await fetch(`/api/docker/containers/${id}/compose`);
+      const res = await fetch(`${nodeBase}/containers/${id}/compose`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setComposeService(data.service);
@@ -600,7 +601,7 @@ export default function App() {
     setComposeSaving(true);
     setComposeMsg(null);
     try {
-      const res = await fetch(`/api/docker/containers/${composeContainerId}/compose`, {
+      const res = await fetch(`${nodeBase}/containers/${composeContainerId}/compose`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -639,7 +640,7 @@ export default function App() {
     setComposeMsg(null);
     setComposeApplyResult(null);
     try {
-      const res = await fetch(`/api/docker/containers/${composeContainerId}/compose/apply`, {
+      const res = await fetch(`${nodeBase}/containers/${composeContainerId}/compose/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -985,7 +986,6 @@ export default function App() {
                         setStackEditing(null);
                         setStackEditorOpen(true);
                       }}
-                      disabled={isRemote}
                       title="Déployer un compose multi-services (stack)"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-orange-500/60 text-orange-400 hover:bg-orange-500/15 text-sm font-medium transition-colors"
                     >
@@ -993,7 +993,6 @@ export default function App() {
                     </button>
                     <button
                       onClick={openCreate}
-                      disabled={isRemote}
                       title="Créer un conteneur simple à partir d'un compose (sans IA)"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium transition-colors"
                     >
@@ -1018,7 +1017,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {!isRemote && (
                 <nav className="flex flex-wrap items-center gap-1 mb-6 border-b border-[#2E2A27]">
                   {(
                     [
@@ -1042,14 +1040,14 @@ export default function App() {
                     </button>
                   ))}
                 </nav>
-                )}
 
-                {!isRemote && (dockerTab === 'images' || dockerTab === 'volumes') && (
-                  <DiskUsageBar refreshKey={resourceRefresh} />
+                {(dockerTab === 'images' || dockerTab === 'volumes') && (
+                  <DiskUsageBar refreshKey={resourceRefresh} base={nodeBase} />
                 )}
 
                 {dockerTab === 'stacks' && (
                   <StacksPanel
+                    base={nodeBase}
                     refreshKey={resourceRefresh}
                     onEdit={(stackName) => {
                       setStackEditing(stackName);
@@ -1058,13 +1056,13 @@ export default function App() {
                   />
                 )}
                 {dockerTab === 'networks' && (
-                  <NetworksPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                  <NetworksPanel base={nodeBase} onChanged={() => setResourceRefresh((v) => v + 1)} />
                 )}
                 {dockerTab === 'images' && (
-                  <ImagesPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                  <ImagesPanel base={nodeBase} onChanged={() => setResourceRefresh((v) => v + 1)} />
                 )}
                 {dockerTab === 'volumes' && (
-                  <VolumesPanel onChanged={() => setResourceRefresh((v) => v + 1)} />
+                  <VolumesPanel base={nodeBase} onChanged={() => setResourceRefresh((v) => v + 1)} />
                 )}
 
                 {dockerTab === 'containers' && selectedNode !== 'local' && (
@@ -1082,7 +1080,7 @@ export default function App() {
                       {nodes.find((n) => String(n.id) === selectedNode)?.online ? 'en ligne' : 'hors ligne'}
                     </span>
                     <span className="text-stone-500">
-                      Cycle de vie, logs, Test &amp; Update et suppression sont disponibles via l'agent (le compose ne l'est pas).
+                      Toutes les actions sont exécutées par l'agent : cycle de vie, logs, compose, Test &amp; Update, suppression.
                     </span>
                   </div>
                 )}
@@ -1145,9 +1143,8 @@ export default function App() {
                           <td className="p-3">
                             <button
                               onClick={() => openCompose(c.id)}
-                              disabled={isRemote}
-                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={isRemote ? 'Indisponible pour un agent distant' : 'Afficher / modifier le compose'}
+                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors"
+                              title="Afficher / modifier le compose"
                             >
                               <FileCode className="w-3.5 h-3.5" />
                             </button>
@@ -1380,6 +1377,7 @@ export default function App() {
         )}
 
         <StackEditor
+          base={nodeBase}
           open={stackEditorOpen}
           initialName={stackEditing}
           onClose={() => setStackEditorOpen(false)}
