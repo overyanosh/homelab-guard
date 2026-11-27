@@ -740,7 +740,7 @@ export default function App() {
                   ))}
                 </nav>
 
-                {dockerTab !== 'containers' && dockerTab !== 'networks' && (
+                {(dockerTab === 'images' || dockerTab === 'volumes') && (
                   <DiskUsageBar refreshKey={resourceRefresh} />
                 )}
 
