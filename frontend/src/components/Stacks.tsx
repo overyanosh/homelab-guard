@@ -11,6 +11,7 @@ import {
   PlayCircle,
   AlertCircle,
 } from 'lucide-react';
+import { CodeEditor } from './CodeEditor';
 import {
   ComposeValidationPanel,
   EnvGapBadge,
@@ -397,20 +398,13 @@ export function StackEditor({
           </div>
 
           {tab === 'compose' ? (
-            <textarea
+            <CodeEditor
               value={yamlDoc}
-              onChange={(e) => setYamlDoc(e.target.value)}
-              spellCheck={false}
-              className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
+              onChange={setYamlDoc}
+              errorLines={(validation?.errors ?? []).map((e) => e.line ?? 0).filter((n) => n > 0)}
             />
           ) : (
-            <textarea
-              value={env}
-              onChange={(e) => setEnv(e.target.value)}
-              spellCheck={false}
-              placeholder="CLE=VALEUR"
-              className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-orange-200 focus:border-orange-500 focus:outline-none resize-none"
-            />
+            <CodeEditor value={env} onChange={setEnv} placeholder="CLE=VALEUR" tone="env" />
           )}
 
           <ComposeValidationPanel

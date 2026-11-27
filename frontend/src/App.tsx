@@ -44,6 +44,7 @@ import {
   type ValidationResult,
 } from './components/ComposeValidation';
 import { StacksPanel, StackEditor } from './components/Stacks';
+import { CodeEditor } from './components/CodeEditor';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
 type DockerTab = 'containers' | 'stacks' | 'networks' | 'images' | 'volumes';
@@ -256,6 +257,9 @@ export default function App() {
     }
     setLoading(false);
   };
+
+  const errorLinesOf = (v: ValidationResult | null): number[] =>
+    (v?.errors ?? []).map((e) => e.line ?? 0).filter((n) => n > 0);
 
   const composeTemplate = (name: string) => `services:
   ${name || 'mon-service'}:
@@ -1196,22 +1200,20 @@ export default function App() {
                 </div>
 
                 {createTab === 'compose' ? (
-                  <textarea
+                  <CodeEditor
                     value={createYaml}
-                    onChange={(e) => {
-                      setCreateYaml(e.target.value);
+                    onChange={(v) => {
+                      setCreateYaml(v);
                       setCreateTouched(true);
                     }}
-                    spellCheck={false}
-                    className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
+                    errorLines={errorLinesOf(validation)}
                   />
                 ) : (
-                  <textarea
+                  <CodeEditor
                     value={createEnv}
-                    onChange={(e) => setCreateEnv(e.target.value)}
-                    spellCheck={false}
+                    onChange={setCreateEnv}
                     placeholder="CLE=VALEUR"
-                    className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-orange-200 focus:border-orange-500 focus:outline-none resize-none"
+                    tone="env"
                   />
                 )}
 
@@ -1433,19 +1435,17 @@ export default function App() {
                     </div>
 
                     {composeTab === 'compose' ? (
-                      <textarea
+                      <CodeEditor
                         value={composeYaml}
-                        onChange={(e) => setComposeYaml(e.target.value)}
-                        spellCheck={false}
-                        className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-emerald-300 focus:border-orange-500 focus:outline-none resize-none"
+                        onChange={setComposeYaml}
+                        errorLines={errorLinesOf(composeValidation)}
                       />
                     ) : (
-                      <textarea
+                      <CodeEditor
                         value={composeEnv}
-                        onChange={(e) => setComposeEnv(e.target.value)}
-                        spellCheck={false}
+                        onChange={setComposeEnv}
                         placeholder="CLE=VALEUR"
-                        className="w-full h-[45vh] rounded-lg border border-[#2E2A27] bg-[#121110] p-4 font-mono text-xs text-orange-200 focus:border-orange-500 focus:outline-none resize-none"
+                        tone="env"
                       />
                     )}
 

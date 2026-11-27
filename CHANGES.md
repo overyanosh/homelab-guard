@@ -1,5 +1,34 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.9 (2026-11-27)
+
+### 🔢 Numéros de ligne dans les éditeurs compose / stacks
+
+Nouveau composant `CodeEditor` (marge de numéros synchronisée au défilement),
+utilisé dans les **trois** éditeurs :
+
+- création d'un conteneur simple (« Nouveau »),
+- édition du compose d'un conteneur existant,
+- création/édition d'une **stack**.
+
+Détails :
+- numérotation 1..N alignée sur les lignes réelles (`wrap="off"`, donc pas de
+  décalage dû au retour à la ligne) ;
+- les **lignes en erreur** (renvoyées par la validation) apparaissent en **rouge
+  gras** dans la marge → on trouve immédiatement la ligne signalée ;
+- onglet `.env` également numéroté.
+
+### 🧹 Avertissement multi-services supprimé
+
+Le message « *x services définis : sélectionnez le service à déployer* » n'a
+plus lieu d'être (le sélecteur de service et la frame Stacks l'ont remplacé) :
+
+- supprimé du validateur backend (`ValidateCompose`) ;
+- le cas multi-services reste visible là où il est utile :
+  - **Nouveau** : encart orange invitant à utiliser **Stacks** ;
+  - **Compose d'un conteneur** : sélecteur de service ;
+  - **Stacks** : déploiement de tous les services.
+
 ## Version 0.9.8 (2026-11-27)
 
 ### 📦 Couverture du graphe de dépendances (npm + Python)

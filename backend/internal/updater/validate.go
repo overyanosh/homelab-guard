@@ -216,11 +216,8 @@ func ValidateCompose(doc, dotEnv string) ValidationResult {
 		}
 	}
 
-	if len(res.Services) > 1 {
-		sort.Strings(res.Services)
-		warnf(0, 0, "services", fmt.Sprintf(
-			"%d services définis : sélectionnez le service à déployer dans la liste", len(res.Services)))
-	}
+	// Multiple services are a normal case (stacks, service selector): no warning.
+	sort.Strings(res.Services)
 
 	res.Valid = len(res.Errors) == 0
 	return res
