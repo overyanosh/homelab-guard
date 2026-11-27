@@ -77,3 +77,30 @@ workflow* (`workflow_dispatch`), toujours depuis leur branche respective.
   branche.
 - Les caches de build sont séparés par branche (`scope=server-latest`,
   `scope=server-test`, …) pour éviter les collisions de couches.
+
+## Authentification OIDC (optionnelle)
+
+Activée **uniquement** si `OIDC_ISSUER` et `OIDC_CLIENT_ID` sont fournis dans
+l'environnement du conteneur (compose). Sinon, aucune page de connexion n'est
+affichée et l'accès reste libre.
+
+| Variable | Requis | Description |
+|---|---|---|
+| `OIDC_ISSUER` | ✅ | URL de l'émetteur (ex. `https://auth.example.com/realms/homelab`) |
+| `OIDC_CLIENT_ID` | ✅ | Client ID enregistré chez l'IdP |
+| `OIDC_CLIENT_SECRET` | ⬜ | Secret client (recommandé, flow confidentiel) |
+| `OIDC_REDIRECT_URL` | ⬜ | Callback (défaut : `<scheme>://<host>/auth/callback`) |
+| `OIDC_SCOPES` | ⬜ | Défaut `openid profile email` |
+| `OIDC_ALLOWED_EMAILS` | ⬜ | Liste d'emails autorisés (séparés par virgules) |
+| `OIDC_ALLOWED_DOMAINS` | ⬜ | Liste de domaines autorisés |
+| `OIDC_SESSION_SECRET` | ⬜ | Secret de signature du cookie (défaut : `MASTER_KEY`) |
+
+Sécurité : flow **authorization code + PKCE (S256)**, `state` et `nonce`
+aléatoires stockés dans un cookie signé à usage unique, session **HMAC-SHA256**
+expirant après 12 h, cookies `HttpOnly` / `SameSite=Lax` (`Secure` derrière TLS).
+
+Endpoints : `GET /auth/config`, `GET /auth/login`, `GET /auth/callback`,
+`GET /auth/me`, `POST /auth/logout`.
+
+Restent publics : `/auth/*`, `/api/health`, `/api/version`, les assets statiques
+et `/ws/agent` (authentification par jeton d'agent).

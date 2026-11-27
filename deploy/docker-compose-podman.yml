@@ -17,6 +17,15 @@ services:
     environment:
       - TZ=Europe/Paris
       - MASTER_KEY=${MASTER_KEY}
+      # Optional OIDC login gate — leave unset to disable authentication:
+      # - OIDC_ISSUER=https://auth.example.com/realms/homelab
+      # - OIDC_CLIENT_ID=homelab-guard
+      # - OIDC_CLIENT_SECRET=change-me
+      # - OIDC_REDIRECT_URL=http://localhost:9015/auth/callback
+      # - OIDC_SCOPES=openid profile email
+      # - OIDC_ALLOWED_EMAILS=me@example.com
+      # - OIDC_ALLOWED_DOMAINS=example.com
+      # - OIDC_SESSION_SECRET=<random 32+ characters>
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AI_BASE_URL=${AI_BASE_URL:-http://host.containers.internal:11434/v1}
       - AI_API_KEY=${AI_API_KEY:-sk-local}

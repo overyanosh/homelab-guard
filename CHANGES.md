@@ -1,5 +1,56 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.11 (2026-11-27)
+
+### 🔐 Connexion OIDC optionnelle
+
+Une page de connexion **OpenID Connect** est ajoutée, **activée uniquement si
+`OIDC_ISSUER` et `OIDC_CLIENT_ID` sont fournis** dans l'environnement du
+conteneur (compose). Sans ces variables, le comportement reste identique
+(accès libre, aucune page de connexion, `enabled: false`).
+
+#### Configuration
+| Variable | Requis | Rôle |
+|---|---|---|
+| `OIDC_ISSUER` | ✅ | URL de l'émetteur (realm Keycloak, Authentik, Authelia…) |
+| `OIDC_CLIENT_ID` | ✅ | Client ID |
+| `OIDC_CLIENT_SECRET` | ⬜ | Secret client |
+| `OIDC_REDIRECT_URL` | ⬜ | Callback (défaut `<scheme>://<host>/auth/callback`) |
+| `OIDC_SCOPES` | ⬜ | Défaut `openid profile email` |
+| `OIDC_ALLOWED_EMAILS` / `OIDC_ALLOWED_DOMAINS` | ⬜ | Allowlist |
+| `OIDC_SESSION_SECRET` | ⬜ | Signature du cookie (défaut `MASTER_KEY`) |
+
+#### Sécurité
+- Flow **authorization code + PKCE (S256)**, `state` et `nonce` aléatoires dans
+  un cookie signé **à usage unique**.
+- Échange de code côté serveur, puis lecture des claims via `userinfo`.
+- Session **HMAC-SHA256** (12 h), cookie `HttpOnly`, `SameSite=Lax`, `Secure`
+  derrière TLS.
+- Allowlist par email/domaine (refus **403**).
+- Routes protégées : `/api/*` (sauf `health`/`version`) et `/ws/*` (sauf
+  `/ws/agent`, authentifié par jeton).
+- SPA et assets statiques publics, pour afficher la page de connexion.
+
+#### Interface
+- Page de connexion dédiée (« Se connecter avec OIDC ») affichée seulement
+  quand OIDC est actif et la session absente.
+- Email de l'utilisateur + « Se déconnecter » en bas de la barre latérale.
+- Vérification de session toutes les 60 s (retour automatique à l'écran de
+  connexion à expiration).
+
+#### Backend
+- Nouveau package `internal/oidc` (discovery, PKCE, échange, userinfo, session).
+- Nouveau fichier `cmd/server/auth.go` (routes + middleware).
+- Endpoints : `GET /auth/config`, `GET /auth/login`, `GET /auth/callback`,
+  `GET /auth/me`, `POST /auth/logout`.
+
+#### Tests (fournisseur OIDC simulé)
+`/auth/config` → `enabled:true` ; API protégée → **401** sans session ;
+`/auth/login` → **302** vers l'IdP avec `code_challenge` S256, `state`, `nonce` ;
+`/auth/callback` (code + state valides) → **302 /** + cookie de session ;
+`/auth/me` → `authenticated:true, email:alice@example.com` ; API → **200** ;
+state invalide → **400** ; allowlist → **403** ; logout → API **401**.
+
 ## Version 0.9.10 (2026-11-27)
 
 ### 📐 Modales compose / stack : hauteur 90 % et barre d'actions toujours visible

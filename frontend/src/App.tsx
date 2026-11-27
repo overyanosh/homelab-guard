@@ -45,6 +45,7 @@ import {
 } from './components/ComposeValidation';
 import { StacksPanel, StackEditor } from './components/Stacks';
 import { CodeEditor } from './components/CodeEditor';
+import { LoginPage } from './components/LoginPage';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
 type DockerTab = 'containers' | 'stacks' | 'networks' | 'images' | 'volumes';
@@ -137,6 +138,12 @@ export default function App() {
   const [stackEditorOpen, setStackEditorOpen] = useState(false);
   const [serverVersion, setServerVersion] = useState<{ version: string; asset: string } | null>(null);
   const [staleBundle, setStaleBundle] = useState(false);
+  const [auth, setAuth] = useState<{
+    enabled: boolean;
+    authenticated: boolean;
+    email?: string;
+    name?: string;
+  } | null>(null);
   const [stackEditing, setStackEditing] = useState<string | null>(null);
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [pveResources, setPveResources] = useState<PveResource[]>([]);
@@ -548,6 +555,32 @@ export default function App() {
     loadSshHosts();
   }, []);
 
+  // Optional OIDC gate: /auth/me tells whether a login page is required.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch('/auth/me', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setAuth(data);
+      } catch {
+        /* keep previous state */
+      }
+    };
+    check();
+    const timer = setInterval(check, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const logout = async () => {
+    await fetch('/auth/logout', { method: 'POST' });
+    window.location.replace('/');
+  };
+
   // Detect an outdated frontend bundle (e.g. after a redeploy): the JS file name
   // referenced by the server's index.html differs from the one we are running.
   useEffect(() => {
@@ -628,6 +661,18 @@ export default function App() {
 
   const openSettings = (id: Tab) => setSettingsTab((prev) => (prev === id ? null : id));
 
+  if (auth === null) {
+    return (
+      <div className="min-h-screen bg-[#121110] flex items-center justify-center text-sm text-stone-500">
+        Chargement…
+      </div>
+    );
+  }
+
+  if (auth.enabled && !auth.authenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="min-h-screen bg-[#121110] text-stone-100 flex">
       <aside className="w-64 border-r border-[#2E2A27] bg-[#1C1A18]/70 p-4 flex flex-col gap-1.5">
@@ -676,6 +721,19 @@ export default function App() {
         })}
 
         <div className="mt-auto pt-3 border-t border-[#2E2A27] text-[10px] text-stone-500 leading-relaxed">
+          {auth.enabled && auth.authenticated && (
+            <div className="mb-2">
+              <div className="truncate text-stone-400" title={auth.email}>
+                {auth.email || auth.name || 'connecté'}
+              </div>
+              <button
+                onClick={logout}
+                className="mt-1 text-[10px] text-orange-400 hover:text-orange-300 transition-colors"
+              >
+                Se déconnecter
+              </button>
+            </div>
+          )}
           <div>Homelab Guard {serverVersion?.version ? `v${serverVersion.version}` : ''}</div>
           <div className="truncate font-mono text-stone-600" title={serverVersion?.asset}>
             {serverVersion?.asset || 'bundle inconnu'}

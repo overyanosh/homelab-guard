@@ -22,6 +22,7 @@ import (
 	"github.com/overyanosh/homelab-guard/backend/internal/agenthub"
 	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
 	"github.com/overyanosh/homelab-guard/backend/internal/labels"
+	"github.com/overyanosh/homelab-guard/backend/internal/oidc"
 	"github.com/overyanosh/homelab-guard/backend/internal/proxmox"
 	sshbastion "github.com/overyanosh/homelab-guard/backend/internal/ssh"
 	"github.com/overyanosh/homelab-guard/backend/internal/store"
@@ -108,7 +109,7 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 // appVersion is surfaced by /api/health and /api/version.
-const appVersion = "0.9.10"
+const appVersion = "0.9.11"
 
 var startedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -131,10 +132,20 @@ func main() {
 	runtimeName := detectRuntimeName(dockerCli)
 	log.Printf("Container engine detected: %s", runtimeName)
 
+	// Optional OIDC login gate, enabled only when OIDC_ISSUER/OIDC_CLIENT_ID are set.
+	authProvider := oidc.NewFromEnv(os.Getenv("MASTER_KEY"))
+
 	updateEngine := updater.NewEngine(dockerCli, "http://127.0.0.1:8001")
 	hub := agenthub.NewHub()
 
 	mux := http.NewServeMux()
+
+	registerAuthRoutes(mux, authProvider)
+	if authProvider.Enabled() {
+		log.Printf("OIDC authentication enabled (issuer: %s)", os.Getenv("OIDC_ISSUER"))
+	} else {
+		log.Printf("OIDC authentication disabled (no OIDC_ISSUER/OIDC_CLIENT_ID)")
+	}
 
 	// Networks, images, volumes and disk-usage management.
 	registerResourceRoutes(mux, dockerCli)
@@ -856,7 +867,7 @@ func main() {
 
 	addr := ":9015"
 	log.Printf("Homelab Guard Core listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	log.Fatal(http.ListenAndServe(addr, authMiddleware(mux, authProvider)))
 }
 
 func getPVEClient(s *store.Store, rawID string) (*proxmox.Client, error) {
