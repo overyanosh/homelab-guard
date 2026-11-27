@@ -397,6 +397,50 @@ func main() {
 		})
 	})
 
+	// --- Container lifecycle actions (start / stop / pause / unpause) ---
+	containerAction := func(w http.ResponseWriter, r *http.Request, act func(id string) error, name string) {
+		id := r.PathValue("id")
+		insp, err := dockerCli.ContainerInspect(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if self, err := os.Hostname(); err == nil && self != "" && strings.HasPrefix(insp.ID, self) {
+			http.Error(w, fmt.Sprintf("action « %s » refusée sur le conteneur Homelab Guard lui-même", name), http.StatusConflict)
+			return
+		}
+		if err := act(id); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+
+	mux.HandleFunc("POST /api/docker/containers/{id}/start", func(w http.ResponseWriter, r *http.Request) {
+		containerAction(w, r, func(id string) error {
+			return dockerCli.ContainerStart(r.Context(), id, container.StartOptions{})
+		}, "démarrer")
+	})
+
+	mux.HandleFunc("POST /api/docker/containers/{id}/stop", func(w http.ResponseWriter, r *http.Request) {
+		containerAction(w, r, func(id string) error {
+			timeout := 10
+			return dockerCli.ContainerStop(r.Context(), id, container.StopOptions{Timeout: &timeout})
+		}, "arrêter")
+	})
+
+	mux.HandleFunc("POST /api/docker/containers/{id}/pause", func(w http.ResponseWriter, r *http.Request) {
+		containerAction(w, r, func(id string) error {
+			return dockerCli.ContainerPause(r.Context(), id)
+		}, "suspendre")
+	})
+
+	mux.HandleFunc("POST /api/docker/containers/{id}/unpause", func(w http.ResponseWriter, r *http.Request) {
+		containerAction(w, r, func(id string) error {
+			return dockerCli.ContainerUnpause(r.Context(), id)
+		}, "reprendre")
+	})
+
 	// --- Remove a container (cannot remove Homelab Guard itself) ---
 	mux.HandleFunc("DELETE /api/docker/containers/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")

@@ -1,5 +1,32 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.3 (2026-11-27)
+
+### ▶️⏸⏹ Actions de cycle de vie des conteneurs
+
+Trois boutons d'action dans la colonne **Actions** du tableau, à côté de
+« Test & Update » et de la corbeille :
+
+| Bouton | Icône | Actif quand | Action |
+|---|---|---|---|
+| **Démarrer / Reprendre** | ▶ | conteneur arrêté (`exited`, `created`) ou **suspendu** | `start` (ou `unpause` si suspendu) |
+| **Suspendre** | ⏸ | conteneur en cours d'exécution | `pause` ; devient ▶ « Reprendre » si déjà suspendu |
+| **Arrêter** | ⏹ | en cours ou suspendu | `stop` (timeout 10 s) |
+
+Les boutons sont **désactivés** quand l'action n'a pas de sens (démarrer un
+conteneur déjà lancé, arrêter un conteneur arrêté, etc.).
+
+### 🛡 Protection
+- Les actions `stop`, `pause`, `unpause` et `start` sur le **conteneur Homelab
+  Guard lui-même** sont refusées (**409**) : arrêter ou suspendre le conteneur
+  couperait l'interface qui sert la requête.
+
+### 🔧 Backend
+- `POST /api/docker/containers/{id}/start`
+- `POST /api/docker/containers/{id}/stop`
+- `POST /api/docker/containers/{id}/pause`
+- `POST /api/docker/containers/{id}/unpause`
+
 ## Version 0.9.2 (2026-11-27)
 
 ### 🔧 CI/CD : deux workflows, deux branches (plus de runs sur `main`)

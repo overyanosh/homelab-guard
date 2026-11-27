@@ -26,6 +26,7 @@ import {
   Plug,
   AlertCircle,
   Trash2,
+  Pause,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -541,6 +542,18 @@ export default function App() {
     loadSshHosts();
   }, []);
 
+  const containerAction = async (
+    id: string,
+    action: 'start' | 'stop' | 'pause' | 'unpause'
+  ) => {
+    const res = await fetch(`/api/docker/containers/${id}/${action}`, { method: 'POST' });
+    if (!res.ok) {
+      alert(await res.text());
+      return;
+    }
+    loadDocker();
+  };
+
   const deleteContainer = async (id: string, name: string) => {
     if (!confirm(`Supprimer le conteneur « ${name} » ? Cette action est irréversible.`)) return;
     const res = await fetch(`/api/docker/containers/${id}?force=true`, { method: 'DELETE' });
@@ -827,6 +840,40 @@ export default function App() {
                           </td>
                           <td className="p-3 text-right">
                             <div className="inline-flex items-center gap-1.5">
+                              <button
+                                onClick={() =>
+                                  containerAction(c.id, c.state === 'paused' ? 'unpause' : 'start')
+                                }
+                                disabled={c.state === 'running' || c.state === 'restarting'}
+                                title={c.state === 'paused' ? 'Reprendre' : 'Démarrer'}
+                                className="p-1.5 rounded bg-[#2E2A27] text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <Play className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  containerAction(c.id, c.state === 'paused' ? 'unpause' : 'pause')
+                                }
+                                disabled={c.state !== 'running' && c.state !== 'paused'}
+                                title={c.state === 'paused' ? 'Reprendre' : 'Suspendre'}
+                                className="p-1.5 rounded bg-[#2E2A27] text-orange-400 hover:bg-orange-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                {c.state === 'paused' ? (
+                                  <Play className="w-3.5 h-3.5" />
+                                ) : (
+                                  <Pause className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() =>
+                                  containerAction(c.id, 'stop')
+                                }
+                                disabled={c.state !== 'running' && c.state !== 'paused'}
+                                title="Arrêter"
+                                className="p-1.5 rounded bg-[#2E2A27] text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <Square className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 disabled={loading}
                                 onClick={() => triggerUpgrade(c.id)}
