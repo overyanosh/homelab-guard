@@ -70,6 +70,9 @@ workflow* (`workflow_dispatch`), toujours depuis leur branche respective.
 
 - Aucun déclenchement sur les tags ni sur les pull requests : deux workflows,
   deux branches, zéro bruit.
+- Le **CodeQL « default setup »** de GitHub (workflow dynamique, non présent dans
+  le dépôt) a été **désactivé** : il relançait une analyse à chaque push sur
+  `main`.
 - `concurrency` annule un run en cours lorsqu'un nouveau push arrive sur la même
   branche.
 - Les caches de build sont séparés par branche (`scope=server-latest`,
