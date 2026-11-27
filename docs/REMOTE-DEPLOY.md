@@ -81,6 +81,36 @@ Le **jeton d'enrôlement doit être créé sur l'instance cible** (celle qui doi
 recevoir l'agent) : un jeton généré sur une autre instance est refusé
 (`401 unauthorized agent token`).
 
+## L'agent se connecte mais l'UI affiche « Cannot connect to the Docker daemon »
+
+L'agent joint bien le serveur (`Connected to control plane`) mais **ne voit pas le
+socket Docker** de sa machine : le conteneur agent a été lancé **sans le montage**.
+
+```bash
+docker run -d --name homelab-guard-agent --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \   # ← indispensable
+  -e GUARD_SERVER_URL=http://192.168.0.6:9015 \
+  -e GUARD_ENROLL_TOKEN=<jeton du NAS> \
+  ghcr.io/overyanosh/homelab-guard-agent:test
+```
+
+Depuis la version 0.9.19, l'agent :
+
+- **détecte automatiquement** le socket (`/var/run/docker.sock`, socket rootless
+  `/run/user/<uid>/docker.sock`, socket Podman…) sauf si `DOCKER_HOST` est défini ;
+- journalise `Docker endpoint: …` et, si aucun socket n'est trouvé, la liste des
+  chemins testés ;
+- renvoie à l'UI un message **actionnable** (monter le socket / définir
+  `DOCKER_HOST` / ajouter le groupe docker) au lieu du message brut.
+
+Cas particuliers :
+
+| Situation | Solution |
+|---|---|
+| Docker **rootless** | `-e DOCKER_HOST=unix:///run/user/<uid>/docker.sock` |
+| Podman | `-v /run/user/<uid>/podman/podman.sock:/var/run/docker.sock` |
+| `permission denied` sur le socket | `--group-add <gid du socket>` ou `--user 0:0` |
+
 ## Notes d'exploitation
 
 - Le conteneur tourne avec `--user 0:0` : le socket Docker du NAS est

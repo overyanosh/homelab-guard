@@ -1,5 +1,26 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.19 (2026-11-27)
+
+### 🔌 Agent : détection du socket Docker et erreurs actionnables
+
+Symptôme : l'agent affiche « Connected to control plane » mais l'UI renvoie
+`Cannot connect to the Docker daemon at unix:///var/run/docker.sock`.
+
+- L'agent **détecte automatiquement** le socket : `DOCKER_HOST` prioritaire, puis
+  `/var/run/docker.sock`, `/run/docker.sock`, socket rootless
+  `$XDG_RUNTIME_DIR/docker.sock` et `/run/user/<uid>/docker.sock`, puis Podman
+  (`/run/podman/podman.sock`, `$XDG_RUNTIME_DIR/podman/podman.sock`,
+  `/run/user/<uid>/podman/podman.sock`).
+- Journalisation : `Docker endpoint: …` au démarrage, et liste des chemins testés
+  si aucun socket n'est trouvé.
+- Les erreurs renvoyées à l'UI sont **explicites** :
+  - socket absent → « montez `-v /var/run/docker.sock:/var/run/docker.sock` ou
+    définissez `DOCKER_HOST` (rootless : `unix:///run/user/<uid>/docker.sock`) » ;
+  - `permission denied` → « ajoutez le groupe docker (`--group-add <gid>` ou
+    `--user 0:0`) ».
+- Documentation : section de dépannage dans `docs/REMOTE-DEPLOY.md`.
+
 ## Version 0.9.18 (2026-11-27)
 
 ### 🏷 Agent : version et URL affichées au démarrage

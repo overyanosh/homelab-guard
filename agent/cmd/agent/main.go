@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +24,7 @@ import (
 )
 
 // agentVersion is logged at startup so the deployed build can be identified.
-const agentVersion = "0.9.18"
+const agentVersion = "0.9.19"
 
 type AgentMessage struct {
 	Type      string          `json:"type"`
@@ -49,7 +51,18 @@ func main() {
 	wsURL := normalizeServerURL(serverURL)
 	log.Printf("Homelab Guard agent %s starting (server=%q, websocket=%q)", agentVersion, serverURL, wsURL)
 
-	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	host, tried := resolveDockerHost()
+	if host == "" {
+		log.Printf("Warning: no Docker socket found (tried: %s). Set DOCKER_HOST or mount the socket.",
+			strings.Join(tried, ", "))
+		host = "unix:///var/run/docker.sock"
+	}
+	log.Printf("Docker endpoint: %s", host)
+
+	dockerCli, err := client.NewClientWithOpts(
+		client.WithHost(host),
+		client.WithAPIVersionNegotiation(),
+	)
 	if err != nil {
 		log.Fatalf("Docker client error: %v", err)
 	}
@@ -109,6 +122,57 @@ func buildMTLSConfig() (*tls.Config, error) {
 		tlsCfg.RootCAs = pool
 	}
 	return tlsCfg, nil
+}
+
+// resolveDockerHost returns the first reachable Docker/Podman socket. DOCKER_HOST
+// always wins; otherwise the usual docker and podman locations are probed.
+func resolveDockerHost() (string, []string) {
+	if h := strings.TrimSpace(os.Getenv("DOCKER_HOST")); h != "" {
+		return h, nil
+	}
+	xdg := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR"))
+	uid := os.Getuid()
+	candidates := []string{
+		"unix:///var/run/docker.sock",
+		"unix:///run/docker.sock",
+	}
+	if xdg != "" {
+		candidates = append(candidates, "unix://"+filepath.Join(xdg, "docker.sock"))
+	}
+	candidates = append(candidates,
+		fmt.Sprintf("unix:///run/user/%d/docker.sock", uid),
+		"unix:///run/podman/podman.sock",
+	)
+	if xdg != "" {
+		candidates = append(candidates, "unix://"+filepath.Join(xdg, "podman", "podman.sock"))
+	}
+	candidates = append(candidates, fmt.Sprintf("unix:///run/user/%d/podman/podman.sock", uid))
+
+	probed := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		path := strings.TrimPrefix(c, "unix://")
+		probed = append(probed, path)
+		if st, err := os.Stat(path); err == nil && !st.IsDir() {
+			return c, probed
+		}
+	}
+	return "", probed
+}
+
+// dockerErrorHint makes socket problems actionable in the UI.
+func dockerErrorHint(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, "Cannot connect to the Docker daemon") ||
+		strings.Contains(msg, "no such file or directory") && strings.Contains(msg, ".sock") {
+		return msg + " — l'agent ne voit pas le socket Docker. Montez-le dans le conteneur " +
+			"(-v /var/run/docker.sock:/var/run/docker.sock) ou définissez DOCKER_HOST " +
+			"(rootless : unix:///run/user/<uid>/docker.sock)."
+	}
+	if strings.Contains(msg, "permission denied") {
+		return msg + " — droits insuffisants sur le socket : ajoutez le groupe docker " +
+			"(--group-add <gid du socket>) ou exécutez avec --user 0:0."
+	}
+	return msg
 }
 
 // normalizeServerURL accepts http(s)://, ws(s):// or a bare host and returns a
@@ -196,7 +260,7 @@ func handleCommand(ctx context.Context, ws *websocket.Conn, dockerCli *client.Cl
 	case "list_containers":
 		list, err := dockerCli.ContainerList(ctx, container.ListOptions{All: true})
 		if err != nil {
-			respPayload = map[string]string{"error": err.Error()}
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
 			break
 		}
 		type summary struct {
