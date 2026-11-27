@@ -1,5 +1,41 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.21 (2026-11-27)
+
+### 🎛 Cycle de vie, logs et suppression pour les agents distants
+
+Réponse à la question : ce n'était **pas possible** avant ce build — l'agent
+n'exposait que `list_containers` et `upgrade_container`. C'est maintenant
+disponible.
+
+**Nouvelles commandes agent** (protocole WebSocket existant) :
+
+| Commande | Effet |
+|---|---|
+| `container_action` | `start`, `stop`, `restart`, `pause`, `unpause` |
+| `container_logs` | 200 dernières lignes (paramètre `tail`) |
+| `container_remove` | suppression (`force`) |
+
+**Nouveaux endpoints serveur** :
+
+- `POST /api/nodes/{id}/containers/{cid}/action` (corps `{"action":"start"}`)
+- `GET  /api/nodes/{id}/containers/{cid}/logs?tail=200`
+- `DELETE /api/nodes/{id}/containers/{cid}?force=true`
+
+**Interface** : les boutons ▶ / ⏸ / ⏹, l'œil (logs) et la corbeille sont
+désormais **actifs pour un agent distant**. Seul le **compose** reste local
+(édition non supportée à distance).
+
+**Sécurité** : l'agent **refuse** les actions et la suppression sur **son propre
+conteneur** (sinon il se couperait en pleine requête).
+
+**Correctif logs** : les flux multiplexés Docker sont décodés
+(`stdcopy.StdCopy`) côté agent **et** côté serveur — plus d'octets binaires dans
+la fenêtre de logs.
+
+Vérifié sur `dockerbay` via le NAS : logs d'`uptime-kuma` remontés proprement,
+`pause`/`unpause` → 200, `stop`/`start`, suppression → 204.
+
 ## Version 0.9.20 (2026-11-27)
 
 ### 🔍 Agent : diagnostic précis des droits sur le socket

@@ -390,10 +390,14 @@ export default function App() {
     setLogsModalOpen(true);
     setLoading(true);
     try {
-      const res = await fetch(`/api/docker/containers/${id}/logs`);
+      const res = isRemote
+        ? await fetch(`/api/nodes/${selectedNode}/containers/${id}/logs?tail=200`, { cache: 'no-store' })
+        : await fetch(`/api/docker/containers/${id}/logs`);
       if (res.ok) {
         const text = await res.text();
         setContainerLogs(text);
+      } else {
+        setContainerLogs(await res.text());
       }
     } catch (err) {
       console.error('Failed to load logs:', err);
@@ -763,7 +767,13 @@ export default function App() {
     id: string,
     action: 'start' | 'stop' | 'pause' | 'unpause'
   ) => {
-    const res = await fetch(`/api/docker/containers/${id}/${action}`, { method: 'POST' });
+    const res = isRemote
+      ? await fetch(`/api/nodes/${selectedNode}/containers/${id}/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action }),
+        })
+      : await fetch(`/api/docker/containers/${id}/${action}`, { method: 'POST' });
     if (!res.ok) {
       alert(await res.text());
       return;
@@ -773,7 +783,9 @@ export default function App() {
 
   const deleteContainer = async (id: string, name: string) => {
     if (!confirm(`Supprimer le conteneur « ${name} » ? Cette action est irréversible.`)) return;
-    const res = await fetch(`/api/docker/containers/${id}?force=true`, { method: 'DELETE' });
+    const res = isRemote
+      ? await fetch(`/api/nodes/${selectedNode}/containers/${id}?force=true`, { method: 'DELETE' })
+      : await fetch(`/api/docker/containers/${id}?force=true`, { method: 'DELETE' });
     if (!res.ok) {
       alert(await res.text());
       return;
@@ -1070,7 +1082,7 @@ export default function App() {
                       {nodes.find((n) => String(n.id) === selectedNode)?.online ? 'en ligne' : 'hors ligne'}
                     </span>
                     <span className="text-stone-500">
-                      Cycle de vie et logs indisponibles pour un agent distant (Test &amp; Update reste actif).
+                      Cycle de vie, logs, Test &amp; Update et suppression sont disponibles via l'agent (le compose ne l'est pas).
                     </span>
                   </div>
                 )}
@@ -1165,7 +1177,7 @@ export default function App() {
                                 onClick={() =>
                                   containerAction(c.id, c.state === 'paused' ? 'unpause' : 'start')
                                 }
-                                disabled={isRemote || c.state === 'running' || c.state === 'restarting'}
+                                disabled={c.state === 'running' || c.state === 'restarting'}
                                 title={c.state === 'paused' ? 'Reprendre' : 'Démarrer'}
                                 className="p-1.5 rounded bg-[#2E2A27] text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
@@ -1206,8 +1218,7 @@ export default function App() {
                                 onClick={() =>
                                   deleteContainer(c.id, (c.names[0] || '').replace(/^\//, ''))
                                 }
-                                disabled={isRemote}
-                                title={isRemote ? 'Indisponible pour un agent distant' : 'Supprimer le conteneur'}
+                                title="Supprimer le conteneur"
                                 className="p-1.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

@@ -126,6 +126,20 @@ L'agent doit loguer `Docker API reachable (unix:///var/run/docker.sock)`
 (version 0.9.20+). Sinon il indique précisément s'il manque le montage ou les
 droits.
 
+## Ce qu'un agent distant permet de faire
+
+| Action | Disponible |
+|---|---|
+| Lister les conteneurs (runtime, réseaux, ports) | ✅ |
+| Démarrer / arrêter / redémarrer / suspendre / reprendre | ✅ (0.9.21+) |
+| Voir les logs | ✅ (0.9.21+) |
+| Supprimer un conteneur | ✅ (0.9.21+) |
+| Test & Update (pipeline sandbox) | ✅ |
+| Éditer le compose | ❌ (local uniquement) |
+
+L'agent refuse toute action sur **son propre conteneur** pour éviter de se couper
+en pleine requête. L'image de l'agent doit être ≥ **0.9.21** pour ces fonctions.
+
 ## Notes d'exploitation
 
 - Le conteneur tourne avec `--user 0:0` : le socket Docker du NAS est

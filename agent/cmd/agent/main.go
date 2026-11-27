@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/gorilla/websocket"
 	"github.com/overyanosh/homelab-guard/backend/internal/ctrinfo"
 	"github.com/overyanosh/homelab-guard/backend/internal/labels"
@@ -24,7 +26,7 @@ import (
 )
 
 // agentVersion is logged at startup so the deployed build can be identified.
-const agentVersion = "0.9.20"
+const agentVersion = "0.9.21"
 
 type AgentMessage struct {
 	Type      string          `json:"type"`
@@ -136,6 +138,12 @@ func buildMTLSConfig() (*tls.Config, error) {
 		tlsCfg.RootCAs = pool
 	}
 	return tlsCfg, nil
+}
+
+// isSelfContainer reports whether id is the agent's own container.
+func isSelfContainer(id string) bool {
+	h, err := os.Hostname()
+	return err == nil && h != "" && strings.HasPrefix(id, h)
 }
 
 // resolveDockerHost returns the first reachable Docker/Podman socket. DOCKER_HOST
@@ -320,6 +328,82 @@ func handleCommand(ctx context.Context, ws *websocket.Conn, dockerCli *client.Cl
 			respPayload = map[string]string{"error": err.Error()}
 		} else {
 			respPayload = res
+		}
+
+	case "container_action":
+		var req struct {
+			ContainerID string `json:"container_id"`
+			Action      string `json:"action"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		if isSelfContainer(req.ContainerID) {
+			respPayload = map[string]string{"error": "action refusée sur le conteneur de l'agent lui-même"}
+			break
+		}
+		var err error
+		timeout := 10
+		switch req.Action {
+		case "start":
+			err = dockerCli.ContainerStart(ctx, req.ContainerID, container.StartOptions{})
+		case "stop":
+			err = dockerCli.ContainerStop(ctx, req.ContainerID, container.StopOptions{Timeout: &timeout})
+		case "restart":
+			err = dockerCli.ContainerRestart(ctx, req.ContainerID, container.StopOptions{Timeout: &timeout})
+		case "pause":
+			err = dockerCli.ContainerPause(ctx, req.ContainerID)
+		case "unpause":
+			err = dockerCli.ContainerUnpause(ctx, req.ContainerID)
+		default:
+			err = fmt.Errorf("action inconnue: %s", req.Action)
+		}
+		if err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]string{"status": "ok", "action": req.Action}
+		}
+
+	case "container_logs":
+		var req struct {
+			ContainerID string `json:"container_id"`
+			Tail        string `json:"tail"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		tail := req.Tail
+		if tail == "" {
+			tail = "200"
+		}
+		reader, err := dockerCli.ContainerLogs(ctx, req.ContainerID, container.LogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Tail:       tail,
+		})
+		if err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+			break
+		}
+		var buf bytes.Buffer
+		_, _ = stdcopy.StdCopy(&buf, &buf, reader)
+		_ = reader.Close()
+		respPayload = map[string]string{"logs": buf.String()}
+
+	case "container_remove":
+		var req struct {
+			ContainerID string `json:"container_id"`
+			Force       bool   `json:"force"`
+		}
+		_ = json.Unmarshal(msg.Payload, &req)
+		if isSelfContainer(req.ContainerID) {
+			respPayload = map[string]string{"error": "suppression refusée sur le conteneur de l'agent lui-même"}
+			break
+		}
+		if req.Force {
+			timeout := 10
+			_ = dockerCli.ContainerStop(ctx, req.ContainerID, container.StopOptions{Timeout: &timeout})
+		}
+		if err := dockerCli.ContainerRemove(ctx, req.ContainerID, container.RemoveOptions{Force: req.Force}); err != nil {
+			respPayload = map[string]string{"error": dockerErrorHint(err)}
+		} else {
+			respPayload = map[string]string{"status": "ok"}
 		}
 	}
 

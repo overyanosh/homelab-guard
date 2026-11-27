@@ -18,6 +18,7 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/gorilla/websocket"
 	"github.com/overyanosh/homelab-guard/backend/internal/agenthub"
 	"github.com/overyanosh/homelab-guard/backend/internal/crypto"
@@ -55,7 +56,7 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 // appVersion is surfaced by /api/health and /api/version.
-const appVersion = "0.9.20"
+const appVersion = "0.9.21"
 
 var startedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -236,6 +237,87 @@ func main() {
 		_, _ = w.Write(raw)
 	})
 
+	mux.HandleFunc("POST /api/nodes/{id}/containers/{cid}/action", func(w http.ResponseWriter, r *http.Request) {
+		nodeID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid node id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Action string `json:"action"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Action == "" {
+			http.Error(w, "action is required", http.StatusBadRequest)
+			return
+		}
+		raw, err := hub.SendCommand(nodeID, "container_action", map[string]any{
+			"container_id": r.PathValue("cid"),
+			"action":       req.Action,
+		}, 30*time.Second)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if msg := commandError(raw); msg != "" {
+			http.Error(w, msg, http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "action": req.Action})
+	})
+
+	mux.HandleFunc("GET /api/nodes/{id}/containers/{cid}/logs", func(w http.ResponseWriter, r *http.Request) {
+		nodeID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid node id", http.StatusBadRequest)
+			return
+		}
+		tail := r.URL.Query().Get("tail")
+		if tail == "" {
+			tail = "200"
+		}
+		raw, err := hub.SendCommand(nodeID, "container_logs", map[string]any{
+			"container_id": r.PathValue("cid"),
+			"tail":         tail,
+		}, 30*time.Second)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		var payload struct {
+			Logs  string `json:"logs"`
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(raw, &payload)
+		if payload.Error != "" {
+			http.Error(w, payload.Error, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store, max-age=0")
+		_, _ = w.Write([]byte(payload.Logs))
+	})
+
+	mux.HandleFunc("DELETE /api/nodes/{id}/containers/{cid}", func(w http.ResponseWriter, r *http.Request) {
+		nodeID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid node id", http.StatusBadRequest)
+			return
+		}
+		raw, err := hub.SendCommand(nodeID, "container_remove", map[string]any{
+			"container_id": r.PathValue("cid"),
+			"force":        r.URL.Query().Get("force") == "true",
+		}, 30*time.Second)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if msg := commandError(raw); msg != "" {
+			http.Error(w, msg, http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("POST /api/nodes/{id}/containers/{cid}/upgrade", func(w http.ResponseWriter, r *http.Request) {
 		nodeID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil {
@@ -299,8 +381,9 @@ func main() {
 		}
 		defer reader.Close()
 		var buf bytes.Buffer
-		io.Copy(&buf, reader)
-		w.Header().Set("Content-Type", "text/plain")
+		_, _ = stdcopy.StdCopy(&buf, &buf, reader)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store, max-age=0")
 		w.Write(buf.Bytes())
 	})
 
@@ -837,6 +920,15 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+
+// commandError extracts an {"error": "..."} payload returned by an agent.
+func commandError(raw json.RawMessage) string {
+	var payload struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(raw, &payload)
+	return payload.Error
+}
 
 // isSelfContainer reports whether id is the container running this process.
 func isSelfContainer(id string) bool {
