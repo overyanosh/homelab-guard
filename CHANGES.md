@@ -1,5 +1,25 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.14 (2026-11-27)
+
+### ↕ Tri des colonnes du tableau des conteneurs
+
+Dans **Podman, Docker & Swarm → Conteneurs**, chaque en-tête de colonne est
+cliquable :
+
+- clic sur un en-tête : tri **A→Z** (ou croissant) ;
+- second clic : tri inverse (**Z→A**) ;
+- indicateur visuel ▲/▼ sur la colonne active, ⇅ discret sur les autres.
+
+Colonnes triables : **Service**, **Image**, **État**, **Moteur**, **Réseaux**,
+**Ports**, **Mode / Test**, **Mise à jour** (les conteneurs avec mise à jour
+disponible remontent en premier en tri descendant).
+
+- Le tri est **persisté** dans le navigateur (`localStorage`), donc conservé
+  après rechargement.
+- Tri insensible à la casse, valeurs vides gérées.
+- Colonnes non triables : Compose, Logs, Actions.
+
 ## Version 0.9.13 (2026-11-27)
 
 ### 🏷 Labels `guard.*` ajoutés au compose de Homelab Guard

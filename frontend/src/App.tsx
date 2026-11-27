@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Shield,
   Box,
@@ -27,6 +27,9 @@ import {
   AlertCircle,
   Trash2,
   Pause,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SshTerminal } from './components/SshTerminal';
@@ -49,6 +52,15 @@ import { LoginPage } from './components/LoginPage';
 
 type Tab = 'docker' | 'proxmox' | 'ssh' | 'ai';
 type DockerTab = 'containers' | 'stacks' | 'networks' | 'images' | 'volumes';
+type ContainerSortKey =
+  | 'name'
+  | 'image'
+  | 'state'
+  | 'runtime'
+  | 'networks'
+  | 'ports'
+  | 'guard'
+  | 'update';
 
 interface ContainerItem {
   id: string;
@@ -134,6 +146,18 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('docker');
   const [settingsTab, setSettingsTab] = useState<Tab | null>(null);
   const [dockerTab, setDockerTab] = useState<DockerTab>('containers');
+  const [sort, setSort] = useState<{ key: ContainerSortKey; dir: 'asc' | 'desc' }>(() => {
+    try {
+      const raw = localStorage.getItem('hg.containers.sort');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.key && (parsed.dir === 'asc' || parsed.dir === 'desc')) return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return { key: 'name', dir: 'asc' };
+  });
   const [resourceRefresh, setResourceRefresh] = useState(0);
   const [stackEditorOpen, setStackEditorOpen] = useState(false);
   const [serverVersion, setServerVersion] = useState<{ version: string; asset: string } | null>(null);
@@ -204,6 +228,78 @@ export default function App() {
   // Live compose validation
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validating, setValidating] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hg.containers.sort', JSON.stringify(sort));
+    } catch {
+      /* ignore */
+    }
+  }, [sort]);
+
+  const toggleSort = (key: ContainerSortKey) =>
+    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+
+  const sortedContainers = useMemo(() => {
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    const valueOf = (c: ContainerItem): string | number => {
+      switch (sort.key) {
+        case 'name':
+          return (c.names[0] || '').replace(/^\//, '').toLowerCase();
+        case 'image':
+          return c.image.toLowerCase();
+        case 'state':
+          return c.state.toLowerCase();
+        case 'runtime':
+          return (c.runtime || '').toLowerCase();
+        case 'networks':
+          return (c.networks ?? []).join(',').toLowerCase();
+        case 'ports':
+          return (c.ports ?? []).join(',').toLowerCase();
+        case 'guard':
+          return c.guard.enabled ? `${c.guard.update_mode}/${c.guard.test_strategy}` : '';
+        case 'update':
+          return c.newer_version_available || newerVersions.has(c.id) ? 1 : 0;
+        default:
+          return '';
+      }
+    };
+    return [...containers].sort((a, b) => {
+      const va = valueOf(a);
+      const vb = valueOf(b);
+      if (va < vb) return -1 * factor;
+      if (va > vb) return factor;
+      return 0;
+    });
+  }, [containers, sort, newerVersions]);
+
+  const SortHeader = ({
+    label,
+    sortKey,
+    className = '',
+  }: {
+    label: string;
+    sortKey: ContainerSortKey;
+    className?: string;
+  }) => {
+    const active = sort.key === sortKey;
+    const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown;
+    return (
+      <th className={`p-3 ${className}`}>
+        <button
+          type="button"
+          onClick={() => toggleSort(sortKey)}
+          title={`Trier par ${label}`}
+          className={`inline-flex items-center gap-1 transition-colors ${
+            active ? 'text-orange-400' : 'hover:text-stone-200'
+          }`}
+        >
+          {label}
+          <Icon className={`w-3 h-3 ${active ? '' : 'opacity-40'}`} />
+        </button>
+      </th>
+    );
+  };
 
   const loadDocker = async () => {
     const res = await fetch('/api/docker/containers', { cache: 'no-store' });
@@ -886,21 +982,21 @@ export default function App() {
                   <table className="w-full text-left text-sm">
                     <thead className="border-b border-[#2E2A27] text-stone-400">
                       <tr>
-                        <th className="p-3">Service</th>
-                        <th className="p-3">Image</th>
-                        <th className="p-3">État</th>
-                        <th className="p-3">Moteur</th>
-                        <th className="p-3">Réseaux</th>
-                        <th className="p-3">Ports</th>
-                        <th className="p-3">Mode / Test</th>
+                        <SortHeader label="Service" sortKey="name" />
+                        <SortHeader label="Image" sortKey="image" />
+                        <SortHeader label="État" sortKey="state" />
+                        <SortHeader label="Moteur" sortKey="runtime" />
+                        <SortHeader label="Réseaux" sortKey="networks" />
+                        <SortHeader label="Ports" sortKey="ports" />
+                        <SortHeader label="Mode / Test" sortKey="guard" />
                         <th className="p-3">Compose</th>
-                        <th className="p-3">Mise à jour</th>
+                        <SortHeader label="Mise à jour" sortKey="update" />
                         <th className="p-3">Logs</th>
                         <th className="p-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#2E2A27]/60">
-                      {containers.map((c) => (
+                      {sortedContainers.map((c) => (
                         <tr key={c.id} className="hover:bg-[#1C1A18]/70">
                           <td className="p-3 font-medium">{c.names[0]?.replace('/', '')}</td>
                           <td className="p-3 font-mono text-xs text-stone-400">{c.image}</td>
