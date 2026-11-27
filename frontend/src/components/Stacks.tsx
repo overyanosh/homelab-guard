@@ -62,6 +62,7 @@ export function StacksPanel({
   const [stacks, setStacks] = useState<StackItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -81,13 +82,35 @@ export function StacksPanel({
     if (!confirm(`Arrêter et supprimer tous les conteneurs de la stack « ${name} » ?`)) return;
     setBusy(name);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(`/api/docker/stacks/${encodeURIComponent(name)}`, {
         method: 'DELETE',
       });
+      const text = await res.text();
       if (!res.ok) {
-        setError(await res.text());
+        setError(text);
         return;
+      }
+      let removed: string[] = [];
+      let failed: string[] = [];
+      try {
+        const data = JSON.parse(text);
+        removed = data.removed ?? [];
+        failed = data.failed ?? [];
+      } catch {
+        /* empty body */
+      }
+      if (failed.length > 0) {
+        setError(
+          `${removed.length} conteneur(s) supprimé(s), ${failed.length} échec(s) : ${failed.join(' ; ')}`
+        );
+      } else {
+        setNotice(
+          removed.length > 0
+            ? `${removed.length} conteneur(s) supprimé(s) : ${removed.join(', ')}`
+            : 'Aucun conteneur associé à supprimer.'
+        );
       }
       await load();
     } finally {
@@ -162,6 +185,12 @@ export function StacksPanel({
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {notice && (
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs text-emerald-300">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{notice}</span>
         </div>
       )}
       {error && (

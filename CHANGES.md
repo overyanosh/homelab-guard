@@ -1,5 +1,28 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.4 (2026-11-27)
+
+### 🗑 Suppression de stack : tous les conteneurs associés sont bien supprimés
+
+La suppression d'une stack s'appuie désormais sur une détection **élargie** et
+un teardown **résilient** :
+
+- reconnaissance des conteneurs par **`guard.stack`** *ou*
+  **`com.docker.compose.project`** (insensible à la casse) ;
+- prise en compte des conteneurs **arrêtés, en pause, renommés**
+  (`container_name`) ou en erreur ;
+- un échec sur un conteneur **n'interrompt plus** la suppression des autres :
+  chaque échec est collecté et renvoyé ;
+- la définition stockée n'est supprimée que si **aucun** échec n'est survenu ;
+- réponse détaillée : `{ "stack": "...", "removed": [...], "failed": [...] }` ;
+- l'interface affiche un **bilan** (« 2 conteneur(s) supprimé(s) : a, b ») ou la
+  liste des échecs ;
+- journalisation serveur : `stack down: name="x" matched=2 removed=2 failed=0`
+  pour diagnostiquer immédiatement un cas où aucun conteneur ne correspond.
+
+Testé avec succès sur : conteneur au `container_name` explicite, conteneur
+arrêté (`Exited 137`), conteneur en pause → tous supprimés.
+
 ## Version 0.9.3 (2026-11-27)
 
 ### ▶️⏸⏹ Actions de cycle de vie des conteneurs

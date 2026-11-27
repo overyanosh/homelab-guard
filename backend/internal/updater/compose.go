@@ -618,27 +618,52 @@ func (e *Engine) DeployStack(ctx context.Context, stackName, composeDoc, dotEnv 
 	return results, nil
 }
 
-// RemoveStack stops and removes every container carrying guard.stack=<name>.
-func (e *Engine) RemoveStack(ctx context.Context, stackName string) ([]string, error) {
+// stackOf returns the stack a container belongs to, if any.
+func stackOf(c dockerTypes.Container) string {
+	if v := strings.TrimSpace(c.Labels["guard.stack"]); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(c.Labels["com.docker.compose.project"]); v != "" {
+		return v
+	}
+	return ""
+}
+
+// RemoveStack stops and removes every container belonging to a stack. Failures
+// are reported per container instead of aborting the whole teardown.
+func (e *Engine) RemoveStack(ctx context.Context, stackName string) (removed []string, failed []string) {
+	removed = []string{}
+	failed = []string{}
+
 	list, err := e.docker.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
-		return nil, err
+		return removed, []string{"list containers: " + err.Error()}
 	}
-	removed := []string{}
+
 	force := true
 	timeout := 10
+	matched := 0
 	for _, c := range list {
-		if c.Labels["guard.stack"] != stackName {
+		if !strings.EqualFold(stackOf(c), stackName) {
 			continue
 		}
-		name := strings.TrimPrefix(c.Names[0], "/")
+		matched++
+		name := ""
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		if name == "" {
+			name = c.ID[:12]
+		}
 		_ = e.docker.ContainerStop(ctx, c.ID, container.StopOptions{Timeout: &timeout})
 		if err := e.docker.ContainerRemove(context.Background(), c.ID, container.RemoveOptions{Force: force}); err != nil {
-			return removed, err
+			failed = append(failed, fmt.Sprintf("%s: %v", name, err))
+			continue
 		}
 		removed = append(removed, name)
 	}
-	return removed, nil
+	log.Printf("stack down: name=%q matched=%d removed=%d failed=%d", stackName, matched, len(removed), len(failed))
+	return removed, failed
 }
 
 // buildConfig derives Config/HostConfig from the inspected container, overridden

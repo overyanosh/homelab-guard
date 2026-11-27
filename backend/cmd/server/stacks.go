@@ -120,21 +120,20 @@ func registerStackRoutes(mux *http.ServeMux, dockerCli *client.Client, dbStore *
 	})
 
 	mux.HandleFunc("POST /api/docker/stacks/{name}/down", func(w http.ResponseWriter, r *http.Request) {
-		removed, err := engine.RemoveStack(r.Context(), r.PathValue("name"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"removed": removed})
+		removed, failed := engine.RemoveStack(r.Context(), r.PathValue("name"))
+		writeJSON(w, http.StatusOK, map[string]any{"removed": removed, "failed": failed})
 	})
 
 	mux.HandleFunc("DELETE /api/docker/stacks/{name}", func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
-		if _, err := engine.RemoveStack(r.Context(), name); err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
+		removed, failed := engine.RemoveStack(r.Context(), name)
+		if len(failed) == 0 {
+			_ = dbStore.DeleteStack(name)
 		}
-		_ = dbStore.DeleteStack(name)
-		w.WriteHeader(http.StatusNoContent)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"stack":   name,
+			"removed": removed,
+			"failed":  failed,
+		})
 	})
 }
