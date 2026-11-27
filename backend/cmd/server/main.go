@@ -107,6 +107,11 @@ var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// appVersion is surfaced by /api/health and /api/version.
+const appVersion = "0.9.5"
+
+var startedAt = time.Now().UTC().Format(time.RFC3339)
+
 func main() {
 	vault, err := crypto.NewVault(os.Getenv("MASTER_KEY"))
 	if err != nil {
@@ -138,7 +143,21 @@ func main() {
 	registerStackRoutes(mux, dockerCli, dbStore, updateEngine)
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "homelab-guard"})
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":  "ok",
+			"service": "homelab-guard",
+			"version": appVersion,
+		})
+	})
+
+	// Version/asset stamp: lets the SPA detect it is running an outdated bundle.
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"version":    appVersion,
+			"asset":      web.CurrentAsset(),
+			"engine":     runtimeName,
+			"started_at": startedAt,
+		})
 	})
 
 	// --- Auto-register Local Agent (skip if already exists) ---

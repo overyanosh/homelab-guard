@@ -1,5 +1,35 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.5 (2026-11-27)
+
+### 🧹 Fin des problèmes de cache du frontend
+
+Le shell de l'application (`index.html`) pouvait rester en cache navigateur et
+continuer à charger **l'ancien bundle JS**, ce qui donnait l'impression que les
+correctifs serveur « ne marchaient pas ».
+
+- `index.html` → `Cache-Control: no-cache, no-store, must-revalidate`
+  (+ `Pragma`, `Expires`).
+- Assets hachés `/assets/*` → `public, max-age=31536000, immutable`
+  (leur nom change à chaque build, donc aucun risque).
+
+### 🆕 Détection de version obsolète
+
+- `GET /api/version` → `{ version, asset, engine, started_at }`.
+  `asset` est le nom du bundle référencé par l'`index.html` embarqué.
+- L'interface compare ce nom au script qu'elle exécute (vérifié au chargement et
+  toutes les 60 s). En cas d'écart, un **bandeau orange** propose
+  « Recharger maintenant » (rechargement avec paramètre anti-cache).
+- La **version et le nom du bundle** sont affichés en bas de la barre latérale :
+  on voit immédiatement si le navigateur exécute l'ancienne version.
+
+Exemple :
+
+```
+Homelab Guard v0.9.5
+index-BsAhWFPv.js
+```
+
 ## Version 0.9.4 (2026-11-27)
 
 ### 🗑 Suppression de stack : tous les conteneurs associés sont bien supprimés

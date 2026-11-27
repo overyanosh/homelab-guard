@@ -134,6 +134,8 @@ export default function App() {
   const [dockerTab, setDockerTab] = useState<DockerTab>('containers');
   const [resourceRefresh, setResourceRefresh] = useState(0);
   const [stackEditorOpen, setStackEditorOpen] = useState(false);
+  const [serverVersion, setServerVersion] = useState<{ version: string; asset: string } | null>(null);
+  const [staleBundle, setStaleBundle] = useState(false);
   const [stackEditing, setStackEditing] = useState<string | null>(null);
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [pveResources, setPveResources] = useState<PveResource[]>([]);
@@ -542,6 +544,34 @@ export default function App() {
     loadSshHosts();
   }, []);
 
+  // Detect an outdated frontend bundle (e.g. after a redeploy): the JS file name
+  // referenced by the server's index.html differs from the one we are running.
+  useEffect(() => {
+    const currentScript = Array.from(document.querySelectorAll('script[src]'))
+      .map((el) => (el as HTMLScriptElement).src)
+      .map((src) => src.split('/').pop() || '')
+      .find((name) => name.startsWith('index-')) || '';
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setServerVersion({ version: data.version, asset: data.asset });
+        setStaleBundle(Boolean(currentScript && data.asset && data.asset !== currentScript));
+      } catch {
+        /* ignore */
+      }
+    };
+    check();
+    const timer = setInterval(check, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   const containerAction = async (
     id: string,
     action: 'start' | 'stop' | 'pause' | 'unpause'
@@ -640,9 +670,35 @@ export default function App() {
             </div>
           );
         })}
+
+        <div className="mt-auto pt-3 border-t border-[#2E2A27] text-[10px] text-stone-500 leading-relaxed">
+          <div>Homelab Guard {serverVersion?.version ? `v${serverVersion.version}` : ''}</div>
+          <div className="truncate font-mono text-stone-600" title={serverVersion?.asset}>
+            {serverVersion?.asset || 'bundle inconnu'}
+          </div>
+        </div>
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto">
+        {staleBundle && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-500/40 bg-orange-950/30 p-3 text-sm text-orange-200">
+            <span>
+              Une nouvelle version de l'interface est disponible (serveur
+              {serverVersion?.version ? ` v${serverVersion.version}` : ''}). Votre navigateur affiche
+              encore l'ancien bundle.
+            </span>
+            <button
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('_v', Date.now().toString());
+                window.location.replace(url.toString());
+              }}
+              className="px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium transition-colors"
+            >
+              Recharger maintenant
+            </button>
+          </div>
+        )}
         {statusBanner && (
           <div className="mb-6 rounded-lg border border-orange-500/30 bg-orange-950/40 p-4 text-sm text-orange-200 flex justify-between items-start">
             <pre className="whitespace-pre-wrap font-sans">{statusBanner}</pre>
