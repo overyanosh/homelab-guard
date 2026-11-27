@@ -1,5 +1,21 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.22 (2026-11-27)
+
+### 🖱 Boutons distants réellement activés dans l'UI
+
+Correctif d'interface : les boutons **logs**, **suspendre** et **arrêter**
+gardaient `disabled={isRemote}` (le remplacement précédent n'avait pas couvert
+ces trois occurrences). Ils sont désormais actifs pour un agent distant, comme le
+prouvaient déjà les appels API.
+
+Seuls restent **locaux** : « Nouveau », « Stacks », les onglets Réseaux / Images /
+Volumes / Stacks et l'édition du **compose**.
+
+Vérifié depuis le NAS vers `dockerbay` :
+`GET .../logs` → 200, `POST .../action {"action":"pause"}` → 200,
+`{"action":"unpause"}` → 200.
+
 ## Version 0.9.21 (2026-11-27)
 
 ### 🎛 Cycle de vie, logs et suppression pour les agents distants

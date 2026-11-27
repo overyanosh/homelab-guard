@@ -1164,9 +1164,8 @@ export default function App() {
                           <td className="p-3">
                             <button
                               onClick={() => openLogs(c.id)}
-                              disabled={isRemote}
-                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={isRemote ? 'Indisponible pour un agent distant' : 'Voir les logs'}
+                              className="p-1.5 rounded bg-[#2E2A27] hover:bg-orange-500/30 text-stone-400 hover:text-orange-500 transition-colors"
+                              title="Voir les logs"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
@@ -1187,7 +1186,7 @@ export default function App() {
                                 onClick={() =>
                                   containerAction(c.id, c.state === 'paused' ? 'unpause' : 'pause')
                                 }
-                                disabled={isRemote || c.state !== 'running' && c.state !== 'paused'}
+                                disabled={c.state !== 'running' && c.state !== 'paused'}
                                 title={c.state === 'paused' ? 'Reprendre' : 'Suspendre'}
                                 className="p-1.5 rounded bg-[#2E2A27] text-orange-400 hover:bg-orange-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
@@ -1201,7 +1200,7 @@ export default function App() {
                                 onClick={() =>
                                   containerAction(c.id, 'stop')
                                 }
-                                disabled={isRemote || c.state !== 'running' && c.state !== 'paused'}
+                                disabled={c.state !== 'running' && c.state !== 'paused'}
                                 title="Arrêter"
                                 className="p-1.5 rounded bg-[#2E2A27] text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
