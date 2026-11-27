@@ -1,5 +1,25 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.18 (2026-11-27)
+
+### 🏷 Agent : version et URL affichées au démarrage
+
+L'agent journalise désormais son build et l'URL réellement utilisée :
+
+```
+Homelab Guard agent 0.9.18 starting (server="http://192.168.0.6:9015",
+websocket="ws://192.168.0.6:9015")
+Connected to control plane: ws://192.168.0.6:9015
+```
+
+Cela permet d'identifier immédiatement :
+- une **ancienne image** d'agent (la correction `http://` → `ws://` date de 0.9.17) ;
+- une **URL erronée** (schéma, hôte, port).
+
+Rappel : le message `malformed ws or wss URL` ne peut provenir que d'un agent
+**antérieur à 0.9.17**. Mettre à jour l'image de l'agent, puis vérifier les deux
+lignes ci-dessus.
+
 ## Version 0.9.17 (2026-11-27)
 
 ### 🔌 Agents distants : correctifs et affichage dans l'UI

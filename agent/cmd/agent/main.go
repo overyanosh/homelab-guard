@@ -21,6 +21,9 @@ import (
 	"github.com/overyanosh/homelab-guard/backend/internal/updater"
 )
 
+// agentVersion is logged at startup so the deployed build can be identified.
+const agentVersion = "0.9.18"
+
 type AgentMessage struct {
 	Type      string          `json:"type"`
 	RequestID string          `json:"request_id,omitempty"`
@@ -44,6 +47,7 @@ func main() {
 	}
 
 	wsURL := normalizeServerURL(serverURL)
+	log.Printf("Homelab Guard agent %s starting (server=%q, websocket=%q)", agentVersion, serverURL, wsURL)
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
