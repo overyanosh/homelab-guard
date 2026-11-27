@@ -109,7 +109,22 @@ Cas particuliers :
 |---|---|
 | Docker **rootless** | `-e DOCKER_HOST=unix:///run/user/<uid>/docker.sock` |
 | Podman | `-v /run/user/<uid>/podman/podman.sock:/var/run/docker.sock` |
-| `permission denied` sur le socket | `--group-add <gid du socket>` ou `--user 0:0` |
+| `permission denied` sur le socket | `--group-add $(stat -c %g /var/run/docker.sock)` ou `--user 0:0` |
+
+Exemple concret (socket `root:docker` gid **988**) :
+
+```bash
+sudo docker run -d --name homelab-guard-agent --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --group-add 988 \
+  -e GUARD_SERVER_URL=http://192.168.0.6:9015 \
+  -e GUARD_ENROLL_TOKEN=<jeton du NAS> \
+  ghcr.io/overyanosh/homelab-guard-agent:test
+```
+
+L'agent doit loguer `Docker API reachable (unix:///var/run/docker.sock)`
+(version 0.9.20+). Sinon il indique précisément s'il manque le montage ou les
+droits.
 
 ## Notes d'exploitation
 

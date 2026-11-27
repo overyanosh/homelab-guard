@@ -24,7 +24,7 @@ import (
 )
 
 // agentVersion is logged at startup so the deployed build can be identified.
-const agentVersion = "0.9.19"
+const agentVersion = "0.9.20"
 
 type AgentMessage struct {
 	Type      string          `json:"type"`
@@ -66,6 +66,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Docker client error: %v", err)
 	}
+
+	// Probe the API once: the Docker client reports any dial failure (including
+	// EACCES on a mounted socket) as "Cannot connect ... Is the docker daemon
+	// running?", which is misleading. Log an actionable warning instead.
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if _, err := dockerCli.Ping(pingCtx); err != nil {
+		log.Printf("Warning: Docker API unreachable at %s: %v", host, err)
+		log.Printf("  → soit le socket n'est pas monté (-v /var/run/docker.sock:/var/run/docker.sock),")
+		log.Printf("  → soit l'utilisateur de l'agent n'y a pas accès : lancer avec --group-add <gid du socket> (ici 988)")
+		log.Printf("    ou --user 0:0. Vérifier sur l'hôte : stat -c %%g /var/run/docker.sock")
+	} else {
+		log.Printf("Docker API reachable (%s)", host)
+	}
+	pingCancel()
 
 	engine := updater.NewEngine(dockerCli, serverURL)
 
@@ -164,9 +178,10 @@ func dockerErrorHint(err error) string {
 	msg := err.Error()
 	if strings.Contains(msg, "Cannot connect to the Docker daemon") ||
 		strings.Contains(msg, "no such file or directory") && strings.Contains(msg, ".sock") {
-		return msg + " — l'agent ne voit pas le socket Docker. Montez-le dans le conteneur " +
-			"(-v /var/run/docker.sock:/var/run/docker.sock) ou définissez DOCKER_HOST " +
-			"(rootless : unix:///run/user/<uid>/docker.sock)."
+		return msg + " — deux causes possibles : (1) le socket n'est pas monté " +
+			"(-v /var/run/docker.sock:/var/run/docker.sock) ; (2) l'utilisateur de l'agent " +
+			"n'a pas les droits dessus (socket root:docker 660) : relancer avec " +
+			"--group-add <gid du socket> ou --user 0:0."
 	}
 	if strings.Contains(msg, "permission denied") {
 		return msg + " — droits insuffisants sur le socket : ajoutez le groupe docker " +

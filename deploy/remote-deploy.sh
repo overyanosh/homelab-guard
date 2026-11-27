@@ -58,10 +58,16 @@ case "$MODE" in
     echo "==> Transferring image to $TARGET"
     podman save homelab-guard-agent:remote | remote 'docker load'
     remote 'docker tag localhost/homelab-guard-agent:remote homelab-guard-agent:remote 2>/dev/null || true'
-    echo "==> Starting agent container"
+    SOCK_GID="$(remote 'stat -c %g /var/run/docker.sock 2>/dev/null || echo 0' | tr -d '\r')"
+    if [ -z "$SOCK_GID" ] || [ "$SOCK_GID" = "0" ]; then
+      GROUP_OPT="--user 0:0"
+    else
+      GROUP_OPT="--group-add $SOCK_GID"
+    fi
+    echo "==> Starting agent container ($GROUP_OPT)"
     remote "docker rm -f homelab-guard-agent >/dev/null 2>&1 || true
       docker run -d --name homelab-guard-agent --restart unless-stopped \
-        --user 0:0 \
+        $GROUP_OPT \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -e GUARD_SERVER_URL='$SERVER_URL' \
         -e GUARD_ENROLL_TOKEN='$TOKEN' \

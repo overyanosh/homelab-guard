@@ -1,5 +1,25 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.20 (2026-11-27)
+
+### 🔍 Agent : diagnostic précis des droits sur le socket
+
+Le client Docker renvoie **le même message** (« Cannot connect to the Docker
+daemon… Is the docker daemon running? ») pour un socket absent **et** pour un
+`EACCES`. Cas réel rencontré sur `dockerbay` : socket présent mais agent en
+**uid 65532** sans appartenance au groupe `docker` (gid 988).
+
+- L'agent effectue un **`Ping` au démarrage** et journalise :
+  - `Docker API reachable (…)` en cas de succès ;
+  - sinon `Warning: Docker API unreachable …: permission denied` suivi des deux
+    causes possibles et du remède (`--group-add <gid>` ou `--user 0:0`, avec
+    `stat -c %g /var/run/docker.sock`).
+- Le message renvoyé à l'UI distingue désormais « socket non monté » et
+  « droits insuffisants ».
+- `deploy/remote-deploy.sh` (mode `agent`) **détecte le gid du socket** sur la
+  cible et ajoute automatiquement `--group-add <gid>` (repli `--user 0:0`).
+- Documentation complétée (exemple `--group-add 988`).
+
 ## Version 0.9.19 (2026-11-27)
 
 ### 🔌 Agent : détection du socket Docker et erreurs actionnables
