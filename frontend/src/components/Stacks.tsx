@@ -67,7 +67,7 @@ export function StacksPanel({
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/docker/stacks', { cache: 'no-store' });
-      if (res.ok) setStacks(await res.json());
+      if (res.ok) setStacks((await res.json()) ?? []);
       else setError(await res.text());
     } catch (err) {
       setError(String(err));

@@ -210,7 +210,7 @@ export function NetworksPanel({ onChanged }: { onChanged: () => void }) {
 
   const load = useCallback(async () => {
     const res = await fetch('/api/docker/networks');
-    if (res.ok) setNetworks(await res.json());
+    if (res.ok) setNetworks((await res.json()) ?? []);
     else setError(await res.text());
   }, []);
 
@@ -436,7 +436,7 @@ export function ImagesPanel({ onChanged }: { onChanged: () => void }) {
 
   const load = useCallback(async () => {
     const res = await fetch('/api/docker/images');
-    if (res.ok) setImages(await res.json());
+    if (res.ok) setImages((await res.json()) ?? []);
     else setError(await res.text());
   }, []);
 
@@ -616,7 +616,7 @@ export function VolumesPanel({ onChanged }: { onChanged: () => void }) {
 
   const load = useCallback(async () => {
     const res = await fetch('/api/docker/volumes');
-    if (res.ok) setVolumes(await res.json());
+    if (res.ok) setVolumes((await res.json()) ?? []);
     else setError(await res.text());
   }, []);
 

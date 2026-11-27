@@ -1,5 +1,27 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.6 (2026-11-27)
+
+### 🐛 Pages blanches (Réglages Proxmox, Réglages SSH)
+
+Cause : `GET /api/proxmox/clusters` et `GET /api/ssh/hosts` renvoyaient **`null`**
+au lieu de `[]` lorsque la liste était vide (slice Go nil sérialisée en JSON
+`null`). Le composant faisait ensuite `clusters.map(...)` sur `null` → exception
+de rendu → **écran blanc** (React démonte tout l'arbre).
+
+Correctifs :
+- **Backend** : les listes vides sont désormais sérialisées en `[]`
+  (`ListProxmoxClusters`, `ListSSHHosts`, `ListAgentNodes`).
+- **Frontend** : garde-fous `?? []` sur toutes les listes chargées
+  (réglages Docker/Proxmox/SSH, conteneurs PVE, images, volumes, réseaux,
+  stacks).
+- **`ErrorBoundary`** ajouté autour de l'application : une exception dans un
+  composant affiche désormais un écran d'erreur lisible (message, « Réessayer »,
+  « Recharger la page ») au lieu d'une page blanche.
+
+Vérifié : `/api/proxmox/clusters` et `/api/ssh/hosts` renvoient `[]` ; les pages
+de réglages s'affichent.
+
 ## Version 0.9.5 (2026-11-27)
 
 ### 🧹 Fin des problèmes de cache du frontend

@@ -99,7 +99,7 @@ export function DockerSettings() {
 
   const load = async () => {
     const res = await fetch('/api/nodes');
-    if (res.ok) setNodes(await res.json());
+    if (res.ok) setNodes((await res.json()) ?? []);
   };
 
   useEffect(() => {
@@ -316,7 +316,7 @@ export function ProxmoxSettings() {
 
   const load = async () => {
     const res = await fetch('/api/proxmox/clusters');
-    if (res.ok) setClusters(await res.json());
+    if (res.ok) setClusters((await res.json()) ?? []);
   };
 
   useEffect(() => {
@@ -493,7 +493,7 @@ export function SshSettings() {
 
   const load = async () => {
     const res = await fetch('/api/ssh/hosts');
-    if (res.ok) setHosts(await res.json());
+    if (res.ok) setHosts((await res.json()) ?? []);
   };
 
   useEffect(() => {

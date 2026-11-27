@@ -527,15 +527,15 @@ export default function App() {
     const clustersRes = await fetch('/api/proxmox/clusters');
     if (!clustersRes.ok) return;
     const clusters = await clustersRes.json();
-    if (clusters?.length > 0) {
+    if (Array.isArray(clusters) && clusters.length > 0) {
       const res = await fetch(`/api/proxmox/clusters/${clusters[0].id}/resources`);
-      if (res.ok) setPveResources(await res.json());
+      if (res.ok) setPveResources((await res.json()) ?? []);
     }
   };
 
   const loadSshHosts = async () => {
     const res = await fetch('/api/ssh/hosts');
-    if (res.ok) setSshHosts(await res.json());
+    if (res.ok) setSshHosts((await res.json()) ?? []);
   };
 
   useEffect(() => {

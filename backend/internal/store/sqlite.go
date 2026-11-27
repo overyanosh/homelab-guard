@@ -137,7 +137,7 @@ func (s *Store) ListAgentNodes() ([]AgentNode, error) {
 	}
 	defer rows.Close()
 
-	var list []AgentNode
+	list := []AgentNode{}
 	for rows.Next() {
 		var n AgentNode
 		if err := rows.Scan(&n.ID, &n.Name, &n.CreatedAt); err != nil {
@@ -216,7 +216,7 @@ func (s *Store) ListSSHHosts() ([]SSHHost, error) {
 	}
 	defer rows.Close()
 
-	var list []SSHHost
+	list := []SSHHost{}
 	for rows.Next() {
 		var h SSHHost
 		if err := rows.Scan(&h.ID, &h.Name, &h.Host, &h.Port, &h.Username, &h.PublicKey); err != nil {
@@ -275,7 +275,7 @@ func (s *Store) ListProxmoxClusters() ([]ProxmoxCluster, error) {
 	}
 	defer rows.Close()
 
-	var list []ProxmoxCluster
+	list := []ProxmoxCluster{}
 	for rows.Next() {
 		var c ProxmoxCluster
 		var insecure int
