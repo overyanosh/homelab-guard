@@ -1,5 +1,36 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.8 (2026-11-27)
+
+### 📦 Couverture du graphe de dépendances (npm + Python)
+
+#### Frontend : lockfile npm
+- Ajout de **`frontend/package-lock.json`** (généré depuis `package.json`) : le
+  graphe de dépendances GitHub analyse désormais **npm**, donc Dependabot peut
+  alerter sur les vulnérabilités JS.
+- Le Dockerfile utilise **`npm ci`** (build reproductible, versions exactes du
+  lockfile) au lieu de `npm install`.
+- `npm audit --omit=dev` : **0 vulnérabilité**.
+
+#### Worker IA : dépendances pinnées et auditées
+- `ai-worker/requirements.txt` **épinglé** (versions exactes, y compris la
+  transitive `starlette`) :
+  - `fastapi` 0.115.5 → **0.165.0**
+  - `starlette` 0.41.3 → **1.10.0** (corrige **14** avis PYSEC)
+  - `uvicorn` 0.32.1 → **0.54.0**
+  - `openai` 1.55.3 → **3.60.0**
+  - `pydantic` 2.10.2 → **2.14.4**
+  - `PyYAML` 6.0.2 → **6.0.4**
+- Le Dockerfile met à jour **pip** (≥ 26.2) lors du build : 4 avis PYSEC sur pip
+  25.0.1 sont ainsi éliminés.
+- `pip-audit -r ai-worker/requirements.txt` : **aucune vulnérabilité connue**.
+
+#### Vérifications après mise à jour
+- Worker IA démarre (uvicorn), `GET /health` → `{"status":"ok",...}`.
+- `GET /api/ai/config` → `worker_online: true`.
+- Validation Pydantic opérationnelle (`422 Field required` sur requête vide).
+- Build image OK (`npm ci` + `pip` pinné), conteneur `Up`, `/api/health` OK.
+
 ## Version 0.9.7 (2026-11-27)
 
 ### 🔒 Sécurité : dépendances mises à jour (Dependabot / govulncheck)

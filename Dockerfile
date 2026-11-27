@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim AS ui-builder
 WORKDIR /ui
-COPY frontend/package.json ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
@@ -18,7 +18,8 @@ FROM python:3.12-slim-bookworm
 WORKDIR /app
 
 COPY ai-worker/requirements.txt ./ai-worker/
-RUN pip install --no-cache-dir -r ./ai-worker/requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2" \
+ && pip install --no-cache-dir -r ./ai-worker/requirements.txt
 
 COPY --from=go-builder /homelab-guard /usr/local/bin/homelab-guard
 COPY ai-worker/ ./ai-worker/
