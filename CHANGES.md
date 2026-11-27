@@ -1,5 +1,23 @@
 # Changelog - Homelab Guard
 
+## Version 0.9.12 (2026-11-27)
+
+### 🧹 Variables OIDC en commentaire + validateur corrigé
+
+- `deploy/docker-compose.yml`, `deploy/docker-compose-podman.yml` et
+  **`deploy/.env`** contiennent désormais un bloc **OIDC entièrement commenté**
+  (il suffit de décommenter pour activer la connexion).
+- Le **compose stocké du conteneur `homelab-guard`** (visible dans la modale
+  Compose) est lui aussi un modèle propre avec le bloc OIDC commenté — et sans
+  secret masqué (`MASTER_KEY=***`) qui aurait cassé le chiffrement au prochain
+  apply.
+- **Correctif du validateur** : les variables citées **dans des commentaires**
+  (`# - MASTER_KEY=${MASTER_KEY}`) ne déclenchent plus de faux avertissement
+  « variable absente du .env ». Le scan des `${VAR}` ignore désormais les
+  commentaires YAML (en respectant les chaînes entre guillemets).
+
+Vérifié : le compose de `homelab-guard` valide **0 erreur / 0 avertissement**.
+
 ## Version 0.9.11 (2026-11-27)
 
 ### 🔐 Connexion OIDC optionnelle

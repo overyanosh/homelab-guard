@@ -68,7 +68,8 @@ func ValidateCompose(doc, dotEnv string) ValidationResult {
 	}
 
 	vars := ParseDotEnv(dotEnv)
-	missing, empty := envGaps(doc, vars)
+	// Comments must not count as variable references (e.g. "# - KEY=${MASTER_KEY}").
+	missing, empty := envGaps(stripYAMLComments(doc), vars)
 	res.MissingEnv = missing
 	res.EmptyEnv = empty
 	for _, name := range missing {
@@ -364,6 +365,32 @@ var serviceNameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 
 func validServiceName(name string) bool {
 	return serviceNameRe.MatchString(name)
+}
+
+// stripYAMLComments removes "# ..." comments so that variables mentioned only in
+// comments are not reported as missing from .env.
+func stripYAMLComments(doc string) string {
+	var out strings.Builder
+	for _, line := range strings.Split(doc, "\n") {
+		inSingle, inDouble := false, false
+		cut := len(line)
+		for i := 0; i < len(line); i++ {
+			switch c := line[i]; {
+			case c == '\'' && !inDouble:
+				inSingle = !inSingle
+			case c == '"' && !inSingle:
+				inDouble = !inDouble
+			case c == '#' && !inSingle && !inDouble && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+				cut = i
+			}
+			if cut != len(line) {
+				break
+			}
+		}
+		out.WriteString(strings.TrimRight(line[:cut], " \t"))
+		out.WriteString("\n")
+	}
+	return out.String()
 }
 
 // firstOddIndent returns the first non-blank line whose indentation is not a
