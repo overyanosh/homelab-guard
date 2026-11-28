@@ -1,3 +1,16 @@
+## Version 0.9.26 (2026-11-28)
+
+### 🏷 Publication : un seul tag par canal
+
+Les workflows ne publient plus de tags de version en plus du canal :
+
+- branche **`Test`** → **`:test`** uniquement (plus `:0.1`, `:0.1.<build>`)
+- branche **`latest`** → **`:latest`** uniquement (plus `:1`, `:1.<build>`)
+
+La version reste traçable dans le label OCI
+`org.opencontainers.image.version` (et `.../revision`), donc aucun tag dédié
+n'est nécessaire.
+
 ## Version 0.9.25 (2026-11-28)
 
 ### 🔒 Scan de sécurité et durcissement de l'image

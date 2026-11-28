@@ -2,7 +2,7 @@ name: Publish latest (v1)
 
 # Diffusion de la dernière version stable.
 # Ne se déclenche QUE sur la branche "latest" (ou manuellement).
-# Versionnement : v1.<build>  → tags d'image : latest, 1, 1.<build>
+# Versionnement : v1.<build>  → tag d'image : latest uniquement
 
 on:
   push:
@@ -62,8 +62,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository }}:1
-            ${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.ver.outputs.version }}
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -79,8 +77,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository }}-agent:latest
-            ${{ env.REGISTRY }}/${{ github.repository }}-agent:1
-            ${{ env.REGISTRY }}/${{ github.repository }}-agent:${{ steps.ver.outputs.version }}
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}

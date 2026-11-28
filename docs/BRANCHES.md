@@ -6,8 +6,8 @@ déclenchés à chaque push sur `main`.
 | Branche  | Rôle                                   | Versionnement   | Workflow                | Images publiées |
 |----------|----------------------------------------|-----------------|-------------------------|-----------------|
 | `main`   | développement / compilation **locale** | `vX.X.1`        | ❌ aucun                | —               |
-| `Test`   | tests / pré-release                    | `vX.1.<build>`  | `publish-test.yml`      | `:test`, `:0.1`, `:0.1.<build>` |
-| `latest` | dernière version **stable** diffusée   | `v1.<build>`    | `publish-latest.yml`    | `:latest`, `:1`, `:1.<build>` |
+| `Test`   | tests / pré-release                    | `vX.1.<build>`  | `publish-test.yml`      | `:test` |
+| `latest` | dernière version **stable** diffusée   | `v1.<build>`    | `publish-latest.yml`    | `:latest` |
 
 ## `main` — compilation locale, aucun workflow
 
@@ -33,7 +33,8 @@ Chaque push sur `Test` déclenche `publish-test.yml` :
 
 1. `go vet ./...` + `go test ./...`
 2. build multi-arch (amd64/arm64) des images **serveur** et **agent**
-3. publication sur GHCR avec les tags `test`, `0.1` et `0.1.<numéro de run>`
+3. publication sur GHCR avec le tag **`test`** (la version reste dans le label
+   OCI `org.opencontainers.image.version`)
 
 Pull :
 
@@ -47,7 +48,8 @@ Chaque push sur `latest` déclenche `publish-latest.yml` :
 
 1. `go vet ./...` + `go test ./...`
 2. build multi-arch (amd64/arm64) des images **serveur** et **agent**
-3. publication sur GHCR avec les tags `latest`, `1` et `1.<numéro de run>`
+3. publication sur GHCR avec le tag **`latest`** (la version reste dans le label
+   OCI `org.opencontainers.image.version`)
 
 Pull :
 

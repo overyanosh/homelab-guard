@@ -2,7 +2,7 @@ name: Publish test (vX.1)
 
 # Branche de test / pré-release.
 # Ne se déclenche QUE sur la branche "Test" (ou manuellement).
-# Versionnement : v0.1.<build>  → tags d'image : test, 0.1, 0.1.<build>
+# Versionnement : v0.1.<build>  → tag d'image : test uniquement
 
 on:
   push:
@@ -62,8 +62,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository }}:test
-            ${{ env.REGISTRY }}/${{ github.repository }}:0.1
-            ${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.ver.outputs.version }}
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -79,8 +77,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository }}-agent:test
-            ${{ env.REGISTRY }}/${{ github.repository }}-agent:0.1
-            ${{ env.REGISTRY }}/${{ github.repository }}-agent:${{ steps.ver.outputs.version }}
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
