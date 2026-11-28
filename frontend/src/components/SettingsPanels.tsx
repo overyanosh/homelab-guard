@@ -34,22 +34,64 @@ function ErrorNote({ message }: { message: string }) {
   );
 }
 
+// Copies text even in a non-secure context (plain http://), where
+// navigator.clipboard is unavailable: falls back to a hidden textarea +
+// document.execCommand('copy'), and reports failure instead of silently doing
+// nothing.
+function legacyCopy(value: string) {
+  const ta = document.createElement('textarea');
+  ta.value = value;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  ta.style.left = '-1000px';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, value.length);
+  const ok = document.execCommand('copy');
+  document.body.removeChild(ta);
+  if (!ok) throw new Error('execCommand copy failed');
+}
+
 function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        legacyCopy(text);
+      }
+      setState('copied');
     } catch {
-      /* clipboard unavailable */
+      try {
+        legacyCopy(text);
+        setState('copied');
+      } catch {
+        setState('failed');
+      }
     }
+    setTimeout(() => setState('idle'), 2500);
   };
+
   return (
-    <button onClick={copy} className={ghostBtn} type="button">
-      {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-      {copied ? 'Copié' : 'Copier'}
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button onClick={copy} className={ghostBtn} type="button">
+        {state === 'copied' ? (
+          <Check className="w-4 h-4 text-emerald-500" />
+        ) : (
+          <Copy className="w-4 h-4" />
+        )}
+        {state === 'copied' ? 'Copié' : 'Copier'}
+      </button>
+      {state === 'failed' && (
+        <span className="max-w-40 text-right text-[10px] text-orange-400">
+          Copie bloquée par le navigateur : sélectionnez le texte et faites Ctrl+C.
+        </span>
+      )}
+    </div>
   );
 }
 

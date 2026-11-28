@@ -1,3 +1,18 @@
+## Version 0.9.27 (2026-11-28) — local uniquement
+
+### 🐛 Bouton « Copier » inopérant en HTTP
+
+`navigator.clipboard` n'existe qu'en **contexte sécurisé** (HTTPS ou
+`localhost`). Sur une instance accédée en `http://192.168.0.6:9015`, l'appel
+échouait silencieusement : le bouton « Copier » ne faisait rien (clé SSH générée,
+commande de déploiement d'agent…).
+
+- Repli automatique via un `textarea` masqué + `document.execCommand('copy')`,
+  qui fonctionne en HTTP.
+- En cas d'échec réel, message explicite sous le bouton :
+  *« Copie bloquée par le navigateur : sélectionnez le texte et faites Ctrl+C. »*
+- Retour visuel « Copié » conservé.
+
 ## Version 0.9.26 (2026-11-28)
 
 ### 🏷 Publication : un seul tag par canal
